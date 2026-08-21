@@ -29,6 +29,12 @@ only in session 9 is the RAG flow itself named and taken apart stage by stage.
 The residual CAG layer survives the crossing — the decision was to add
 retrieval, not to delete the static context.
 
+Building the CAG is not in this repo; **deciding to leave it is.** s06-01 is that
+article and it is where the handbook starts: it reads the CAG's failure modes as
+four constraints rather than one, runs the corpus against a four-axis decision
+tree, and lands on RAG with a residual CAG layer. The handbook opens at the
+decision, not after it.
+
 Everything from there is the same estimator, **made more production-ready one
 article at a time** — audited sources, then a real extraction pipeline, then
 chunking that respects the JSON's structure, then pgvector, then an index, then a
@@ -60,9 +66,6 @@ ingestion, chunking, the retriever, reranking, fusion, routing. Keeping the two
 side by side rather than replacing one with the other is what the estimator did,
 and it is why its **residual CAG layer** survived the crossing.
 
-The CAG chapter itself is not in this repo — the handbook opens after that
-decision has already been reversed.
-
 ### Reading it for a different domain
 
 This handbook is reference material for building **several RAG systems in
@@ -91,7 +94,7 @@ The articles form an arc through the pipeline, in the order the pipeline runs.
 
 | Part | Covers |
 |---|---|
-| [6 — Ingest](#part-6--the-ingest-side) | Audit the sources, extract them, clean and validate, make them safe to embed |
+| [6 — Ingest](#part-6--the-ingest-side) | Choose the architecture, then audit the sources, extract them, clean and validate, make them safe to embed |
 | [7 — Embeddings and chunking](#part-7--embeddings-and-chunking) | What an embedding is, which model to pick, how to cut the text |
 | [8 — Vector databases](#part-8--vector-databases) | Whether you need one, which one, what the index actually builds, and its ceiling |
 | [9 — The RAG flow](#part-9--the-rag-flow) | The four canonical stages — reformulation, retrieval, augmentation, generation — and serving them as an operable service |
@@ -104,15 +107,16 @@ cosine), **s10-02** (measure the cost, not only the gain).
 
 | # | Document | What it argues |
 |---|---|---|
+| 1 | [Data quality and architecture decisions](articles/s06-01-data-quality-and-architecture-decisions.md) | The CAG ceiling is four constraints at once, and cost usually kills the project before capacity does. No clever chunking fixes bad data, which is why three sessions go to data before anything is embedded. Splits the six-step pipeline into offline indexing and online query, gives a four-axis decision tree, and warns that RAG can cost *more* than CAG — so the choice is made on viability, not price. |
 | 2 | [Enterprise data audit and inventory](articles/s06-02-enterprise-data-audit-inventory.md) | Audit before vectorising. A factual source census, four non-averaging quality dimensions, "context erosion" as the reason lineage is a *condition of usefulness* in RAG, and a versioned typed `data_catalog.yaml` the pipeline reads at runtime. |
 | 3 | [Multi-format extraction pipeline](articles/s06-03-multi-format-extraction-pipeline.md) | A modular `ingest/` (loaders → parsers → normalizers) converging on a canonical `Document`, instead of delegating everything to `unstructured.partition()`. Per-format strategy, three-source metadata propagation, and why `hi_res` PDF parsing everywhere is a waste. |
 | 4 | [Data cleaning, normalization and validation](articles/s06-04-data-cleaning-normalization-validation.md) | The *form* contract (Pydantic) is not the *content* contract. Four families of dirty data, cleaning as one auditable layer between parser and normalizer, Pandera as a versioned data contract, and an explicit repair / quarantine / discard policy. |
 | 5 | [PII, anonymization and GDPR](articles/s06-05-pii-anonymization-gdpr.md) | Access control cannot protect a vector corpus. Three leakage modes, four GDPR concepts that drive technical decisions, and consistent reversible pseudonymization (Presidio + Faker + mapping table) over generic redaction, which costs 15-25% of retrieval quality. |
 
-Articles 2-5 form a complete arc through the ingest side: audit the sources,
-extract them, clean and validate what came out, then make it safe to embed.
-Article 1 of this part is missing, and nothing in 2-5 depends on it — article 2
-opens by treating the RAG-versus-CAG decision as already made.
+Article 1 is where the architecture is chosen; 2-5 are the arc that follows from
+choosing RAG — audit the sources, extract them, clean and validate what came out,
+then make it safe to embed. Article 2 opens by treating the decision as already
+made, which is exactly where article 1 leaves off.
 
 ## Part 7 — embeddings and chunking
 
@@ -177,8 +181,8 @@ being described.
 One file per article under `articles/`, named `s{session}-{article}-{slug}.md`,
 so reading order and grouping are both visible from the directory listing:
 `s07-01-embeddings-semantic-geometry.md`. The session prefix is not decoration —
-each session restarts its article numbering, so a flat scheme would have put
-session 7's article 1 exactly where session 6's *missing* article 1 belongs.
+each session restarts its article numbering, so several articles share the
+number 1 and a flat scheme would collide on every one of them.
 
 Every file opens with YAML frontmatter:
 
