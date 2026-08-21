@@ -37,12 +37,28 @@ rewriting on top.
 
 Two consequences for reading. The worked examples recur on purpose — the Stripe
 budget, the forty-minute transcript that mixes catalogue with billing
-integration, the `ingest/` layout of part 6 and the `app/generation/rag/` tree of
-part 10 are one codebase seen at different stages, not unrelated illustrations.
-And **later articles routinely revise earlier ones**, because the system has
-grown between them: a technique ruled out at one scale is adopted at the next.
-Where that happens it is flagged rather than smoothed over (see s09-02 and
-s10-04).
+integration, the module trees in the code blocks are one codebase seen at
+different stages, not unrelated illustrations. And **later articles routinely
+revise earlier ones**, because the system has grown between them: a technique
+ruled out at one scale is adopted at the next. Where that happens it is flagged
+rather than smoothed over (see s09-02 and s10-04).
+
+### The code paths are snapshots, not one layout
+
+The paths in the code blocks disagree across the arc, and that is history rather
+than sloppiness: the project was **refactored into `cag/` and `rag/` folders**
+partway through, so an article's paths date it. `src/estimator/retrieval/` in
+s09-05 and `app/generation/rag/retrieval/` in part 10 are the same component
+before and after that split. Read the last segment — `retrieval/`, `ingest/`,
+`generation/` — as the stable part and the prefix as a timestamp.
+
+**Retrieval belongs to RAG**, which sets the layout to build for a new project
+from this handbook: start with `cag/`, since that is where a system that has not
+yet earned retrieval lives; create `rag/` at the point you actually adopt
+retrieval, and put the pipelines and everything retrieval-related inside it —
+ingestion, chunking, the retriever, reranking, fusion, routing. Keeping the two
+side by side rather than replacing one with the other is what the estimator did,
+and it is why its **residual CAG layer** survived the crossing.
 
 The CAG chapter itself is not in this repo — the handbook opens after that
 decision has already been reversed.
