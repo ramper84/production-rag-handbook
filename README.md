@@ -99,8 +99,12 @@ ahead of the codebase.
 | s10-05 | `route_query`, `RoutingDecision` | `retrieval/router.py` — `RoutingDecision` exact, plus `RouteClassification` |
 | s10-06 | `temporal_weight(document_date, …)` | `decay_weight(age_days, half_life_days)` and `apply_temporal_decay` in `retrieval/temporal.py` |
 | s10-06 | per-stage toggles | `retrieval/advanced_pipeline.py` — `StageConfig.from_settings` |
+| s09-04 | `validate_citations` | `verify_citations` in `rag/validation.py` |
 | s11-01 | `compress_chunk`, `extract_key_points`, `BudgetEvidence` | *not implemented* |
 | s11-02 | `aggregate_components`, `weighted_median`, `SourceWeight` | *not implemented* |
+| s11-03 | `check_citation_integrity`, `CitationIntegrityReport` | `verify_citations`, `CitationReport` in `rag/validation.py` — per line, with a third `insufficient` status |
+| s11-03 | `Citation.locator`, `char_span` | `SourceReference.evidence` — a model-copied verbatim span, not an ingest-captured offset |
+| s11-03 | `CitationLinkResolver` (Rails) | *not implemented* |
 
 Two rows deserve more than a rename.
 
@@ -236,10 +240,12 @@ reformulate and s10-04 for *how* the fan-out is built and paid for.
 | 1 | [Content augmentation](articles/s11-01-content-augmentation-preparing-context.md) | The layer between retrieval and generation, where raw chunks become distilled evidence. Noise costs tokens, attention and hallucination risk — irrelevant figures are fuel for grabbing the wrong one. Extractive compression cannot invent and wins for a corpus of figures; abstractive adds a second generation point and must be fenced by a schema where a missing figure stays `None`. Preserve `chunk_id` or traceability dies before it is built. |
 | 2 | [Synthesising contradictory budgets](articles/s11-02-synthesising-contradictory-budgets.md) | Three comparable budgets say 40h, 90h and 55h, and averaging them into 62 throws away the most valuable thing the data had: the disagreement names a variable the client never mentioned. Weight on three signals not seven, compute a deterministic anchor in code so the model reasons over the arithmetic instead of inventing it, and return the range — collapsing a real disagreement into a clean number is lying with the appearance of rigour. |
 
-Articles 1 and 2 chain directly: 1 ends at two clean sources that disagree, 2
-starts there. Article 2 ends on the question its own machinery makes harder —
-after three sources are woven into one figure, where exactly does that figure
-come from — so the part is not finished yet.
+| 3 | [Citation and verifiable attribution](articles/s11-03-citation-and-verifiable-attribution.md) | An identifier is not a citation. A verifiable one resolves, locates the line, and is traceable — and line-level citation is an *ingestion* decision, enabled long before generation by how the sources were stored. Dangling citations are checked in code, never trusted to the model, because they look exactly like real ones. Structure is the source of truth; inline versus footnote is presentation. The AI service emits `document_id`, never URLs. |
+
+The three chain directly: 1 ends at two clean sources that disagree, 2 starts
+there and ends at "where exactly does this figure come from", 3 answers that and
+ends at the crack it cannot close — a citation pointing at a real source that
+does not back it. Article 3 is implemented in the codebase; 1 and 2 are not.
 
 This part revisits part 9's augmentation article rather than replacing it.
 **s09-04** assembles the retrieved chunks; **s11-01** distils them first, so the
