@@ -99,6 +99,7 @@ The articles form an arc through the pipeline, in the order the pipeline runs.
 | [8 — Vector databases](#part-8--vector-databases) | Whether you need one, which one, what the index actually builds, and its ceiling |
 | [9 — The RAG flow](#part-9--the-rag-flow) | The four canonical stages — reformulation, retrieval, augmentation, generation — and serving them as an operable service |
 | [10 — Advanced retrieval](#part-10--advanced-retrieval) | Reranking, hybrid search, query rewriting, and how to measure whether any of them helped |
+| [11 — Augmentation and synthesis](#part-11--augmentation-and-synthesis) | Distilling retrieved chunks into evidence the generator can actually use |
 
 If you read only three: **s07-03** (chunking), **s09-03** (retrieval is not only
 cosine), **s10-02** (measure the cost, not only the gain).
@@ -145,7 +146,7 @@ made, which is exactly where article 1 leaves off.
 | 1 | [From static CAG to the RAG flow](articles/s09-01-from-cag-to-rag-four-stages.md) | The four canonical stages, five operational differences from CAG, an honest account of when CAG still wins (Chan et al. 2024), and the rule that retrieval quality is the ceiling on the whole system. |
 | 2 | [Query reformulation](articles/s09-02-query-reformulation.md) | Why embedding a raw transcript fails (length dissolves signal, noise drowns keywords, anaphora encodes nothing), the five reformulation families, and the case for structured extraction on debuggability and downstream filter utility. Its verdict on sub-query decomposition is softened by **s10-04**. |
 | 3 | [Retrieval that is not only cosine](articles/s09-03-retrieval-topk-threshold-filters.md) | The two failure modes of a top-K-only retriever, threshold set from the empirical distance distribution, soft-fail with `low_confidence`, pre/post/in-query filtering chosen by selectivity, four anti-patterns, and precision over recall when the answer has economic consequences. |
-| 4 | [Augmentation: assembling context](articles/s09-04-augmentation-assembling-context.md) | Why `"\n\n".join` yields invented citations and silently ignored context. XML `<source>` delimiters with metadata, lost-in-the-middle and chunk order, whole-chunk truncation counting the wrapper, a prompt with grounding and a licence to refuse, and post-generation citation validation. |
+| 4 | [Augmentation: assembling context](articles/s09-04-augmentation-assembling-context.md) | Why `"\n\n".join` yields invented citations and silently ignored context. XML `<source>` delimiters with metadata, lost-in-the-middle and chunk order, whole-chunk truncation counting the wrapper, a prompt with grounding and a licence to refuse, and post-generation citation validation. Its `reorder_u_pattern` is the implementation **s11-01** should have reused. |
 | 5 | [The data layer as a service](articles/s09-05-data-layer-as-a-service-securing-the-retriever.md) | The retriever and the generator are two logical services sharing a codebase, and blast radius, rate limits and credential granularity all prove it. Two FastAPI routers with deliberately asymmetric contracts, two keys compared in constant time, 120/min against 10/min because one call costs milliseconds and the other costs euros, idempotency keys so a retry does not buy a second estimate, and per-stage logging tied by `request_id`. |
 
 ## Part 10 — advanced retrieval
@@ -169,6 +170,23 @@ in favour of structured extraction. s10-04 is warmer on it for the same
 estimation system, and adds the fusion asymmetry s09-02 does not raise. Both are
 the same author, so `source` does not settle it; read s09-02 for *whether* to
 reformulate and s10-04 for *how* the fan-out is built and paid for.
+
+## Part 11 — Augmentation and synthesis
+
+| # | Article | What it argues |
+|---|---|---|
+| 1 | [Content augmentation](articles/s11-01-content-augmentation-preparing-context.md) | The layer between retrieval and generation, where raw chunks become distilled evidence. Noise costs tokens, attention and hallucination risk — irrelevant figures are fuel for grabbing the wrong one. Extractive compression cannot invent and wins for a corpus of figures; abstractive adds a second generation point and must be fenced by a schema where a missing figure stays `None`. Preserve `chunk_id` or traceability dies before it is built. |
+
+Only article 1 has landed; the part's name anticipates article 2 from where
+article 1 stops — two clean, comparable sources that disagree, which
+distillation cannot resolve.
+
+This part revisits part 9's augmentation article rather than replacing it.
+**s09-04** assembles the retrieved chunks; **s11-01** distils them first, so the
+thing being assembled is structured evidence rather than raw text. Where they
+overlap — chunk order, truncation — s11-01 goes further, and in one place gets
+it wrong: its edge-loading function inverts its own intent, and s09-04's
+`reorder_u_pattern` is the correct implementation. Flagged in place.
 
 ## Conventions
 
