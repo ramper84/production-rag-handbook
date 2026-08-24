@@ -95,6 +95,8 @@ def reorder_u_pattern(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
 
 The programme leaves this function as a configurable option in `context_assembler.py` but does not enable it by default. The decision of when to enable it belongs to the system's operator and is based on observable metrics: if after deploying to production the estimates' quality is noticeably worse when K rises, that is a sign lost-in-the-middle is penalising and the reorder is worth it. In the live session we will see a concrete demo of the effect by deliberately placing the critical chunk in different positions and observing the resulting estimate.
 
+> *(Editor's note — checked against the code: `reorder_u_pattern` is **not** in `context_assembler.py`, which holds only `_wrap_chunk`, `build_context_block` and `truncate_to_token_budget`. The function exists in this article and nowhere in the reference implementation, so "left as a configurable option" describes an intention rather than a state. It is still the correct implementation of the manoeuvre — see the next note — but it has to be written before it can be enabled.)*
+
 > *(Editor's note: [s11-01](s11-01-content-augmentation-preparing-context.md) revisits this and edge-loads unconditionally rather than leaving it off by default — reasonable, since by then the context holds distilled evidence rather than raw chunks and the ordering decision carries more weight. Its own implementation is broken, though, and `reorder_u_pattern` above is the version to use: see the note at that function.)*
 
 ## Defensive truncation: cut the whole chunk, not the content

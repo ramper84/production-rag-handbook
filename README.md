@@ -66,6 +66,64 @@ ingestion, chunking, the retriever, reranking, fusion, routing. Keeping the two
 side by side rather than replacing one with the other is what the estimator did,
 and it is why its **residual CAG layer** survived the crossing.
 
+### Article to module map
+
+Checked against the reference implementation at `lidr/ai-engineering`, branch
+`session_11`, commit `3292744`. **The articles are the handbook's source of
+truth and are reproduced verbatim; where a name below differs, the code is what
+you will actually find.** Rows marked *not implemented* are articles running
+ahead of the codebase.
+
+| Article | Article names it | In the code |
+|---|---|---|
+| s06-01 | `/index/run`, `/query` | `app/api/ingestion.py` (`/api/v1/ingestion`), `app/api/search.py` |
+| s06-02 | `data_catalog.yaml` | `app/ingestion/catalog/` — `loader.py`, `models.py`, `inspect.py` |
+| s06-03 | parsers, registry | `app/ingestion/parsers/` — `budget_json.py`, `transcript_txt.py`, `registry.py`, `protocol.py` |
+| s06-04 | cleaning + validation | `app/ingestion/cleaning/` — `budget_records.py`, `policy.py`, `schemas.py` |
+| s06-05 | Presidio analyzer, pseudonymiser | `app/ingestion/pii/` — `analyzer.py`, `pseudonymizer.py`, `recognizers.py`, `mapping_store.py` |
+| s07-03/04 | chunking strategies | `app/generation/rag/chunking/` — `base.py` (`Chunker` ABC), `structural.py`, `strategies/*.py` |
+| s08-04 | `documents` + `chunks` | `app/generation/rag/store/models.py` — but **three** chunk tables, see below |
+| s09-02 | `query_reformulator.py` | same path; `compose_search_text(query: EstimationQuery)` |
+| s09-03 | retriever | `app/generation/rag/retriever.py` — `SemanticRetriever` |
+| s09-04 | `context_assembler.py` | same path — but `reorder_u_pattern` is **absent**, see below |
+| s09-05 | `src/estimator/api/routers/` | `app/api/routers/` — prefixes `/v1/retrieval` and `/v1/estimate` exactly as described |
+| s09-05 | `require_retrieval_key`, `require_estimate_key` | `app/api/security.py`, both names exact, `secrets.compare_digest` as argued |
+| s09-05 | `SearchRequest`, `SearchResponse` | `RetrievalRequest`, `RetrievalResult` |
+| s09-05 | 120/min, 10/min | exact, in `routers/retrieval.py` and `routers/estimate.py` |
+| s10-01 | reranker | `app/generation/rag/retrieval/reranker.py` — `CrossEncoderReranker` |
+| s10-02 | golden set, metrics | `evals/` — `metrics.py`, `dataset.py`, `run.py` |
+| s10-03 | `reciprocal_rank_fusion` | `retrieval/fusion.py`, name exact |
+| s10-04 | `query_expansion.py` | `retrieval/query_transform.py` |
+| s10-04 | `interleave_rankings` | `round_robin_merge` in `retrieval/fusion.py` |
+| s10-05 | `SearchTarget` | `Collection(StrEnum)` in `retrieval/collections.py`, alongside `CollectionSpec`, `HardFilters`, `match_rules` |
+| s10-05 | `route_query`, `RoutingDecision` | `retrieval/router.py` — `RoutingDecision` exact, plus `RouteClassification` |
+| s10-06 | `temporal_weight(document_date, …)` | `decay_weight(age_days, half_life_days)` and `apply_temporal_decay` in `retrieval/temporal.py` |
+| s10-06 | per-stage toggles | `retrieval/advanced_pipeline.py` — `StageConfig.from_settings` |
+| s11-01 | `compress_chunk`, `extract_key_points`, `BudgetEvidence` | *not implemented* |
+| s11-02 | `aggregate_components`, `weighted_median`, `SourceWeight` | *not implemented* |
+
+Two rows deserve more than a rename.
+
+**s08-04 versus s10-05 is settled by the code.** `store/models.py` declares
+`documents` plus **three** chunk tables — `budget_chunks`, `transcript_chunks`,
+`technical_doc_chunks`. That is s10-05's "option B", so the implementation went
+with the later article against the earlier one, and the editor's note in s08-04
+records an argument the codebase has already resolved.
+
+**s09-04 claims a function the repo does not have.** It says `reorder_u_pattern`
+is "left as a configurable option in `context_assembler.py`"; that file contains
+only `_wrap_chunk`, `build_context_block` and `truncate_to_token_budget`. The
+function exists in the article and nowhere else — which matters, because s11-01's
+note points readers at it as the correct implementation of edge loading. It is
+correct, and it is theirs to write.
+
+**The code is sometimes more specific than the article.** s10-04 describes query
+routing as "a humble heuristic (query length and structure)"; `query_transform.py`
+has the real policy — `_SHORT_WORDS = 6`, `_LONG_WORDS = 25`,
+`_MULTITOPIC_CONNECTORS = 2`, and `choose_technique()` returning
+`DIRECT` / `EXPAND` / `DECOMPOSE`. When an article waves at a heuristic, the
+constants are usually in the module.
+
 ### Reading it for a different domain
 
 This handbook is reference material for building **several RAG systems in
@@ -277,3 +335,8 @@ moved here — what remains is the general argument.
    add a `> *(Editor's note — domain transfer: ...)*` wherever a conclusion holds
    only because of what the estimator's corpus is. Say what survives the move,
    not merely that the claim is narrow.
+8. Grep the reference implementation for every identifier and path the article
+   names, and update the article-to-module map. Renames go in the table only;
+   add an editor's note when the article asserts something about the codebase
+   that is not true, or when the code pins down a constant the article leaves
+   vague.
