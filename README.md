@@ -99,7 +99,7 @@ The articles form an arc through the pipeline, in the order the pipeline runs.
 | [8 — Vector databases](#part-8--vector-databases) | Whether you need one, which one, what the index actually builds, and its ceiling |
 | [9 — The RAG flow](#part-9--the-rag-flow) | The four canonical stages — reformulation, retrieval, augmentation, generation — and serving them as an operable service |
 | [10 — Advanced retrieval](#part-10--advanced-retrieval) | Reranking, hybrid search, query rewriting, and how to measure whether any of them helped |
-| [11 — Augmentation and synthesis](#part-11--augmentation-and-synthesis) | Distilling retrieved chunks into evidence the generator can actually use |
+| [11 — Augmentation and synthesis](#part-11--augmentation-and-synthesis) | Distilling retrieved chunks into evidence, then reconciling sources that disagree |
 
 If you read only three: **s07-03** (chunking), **s09-03** (retrieval is not only
 cosine), **s10-02** (measure the cost, not only the gain).
@@ -176,10 +176,12 @@ reformulate and s10-04 for *how* the fan-out is built and paid for.
 | # | Article | What it argues |
 |---|---|---|
 | 1 | [Content augmentation](articles/s11-01-content-augmentation-preparing-context.md) | The layer between retrieval and generation, where raw chunks become distilled evidence. Noise costs tokens, attention and hallucination risk — irrelevant figures are fuel for grabbing the wrong one. Extractive compression cannot invent and wins for a corpus of figures; abstractive adds a second generation point and must be fenced by a schema where a missing figure stays `None`. Preserve `chunk_id` or traceability dies before it is built. |
+| 2 | [Synthesising contradictory budgets](articles/s11-02-synthesising-contradictory-budgets.md) | Three comparable budgets say 40h, 90h and 55h, and averaging them into 62 throws away the most valuable thing the data had: the disagreement names a variable the client never mentioned. Weight on three signals not seven, compute a deterministic anchor in code so the model reasons over the arithmetic instead of inventing it, and return the range — collapsing a real disagreement into a clean number is lying with the appearance of rigour. |
 
-Only article 1 has landed; the part's name anticipates article 2 from where
-article 1 stops — two clean, comparable sources that disagree, which
-distillation cannot resolve.
+Articles 1 and 2 chain directly: 1 ends at two clean sources that disagree, 2
+starts there. Article 2 ends on the question its own machinery makes harder —
+after three sources are woven into one figure, where exactly does that figure
+come from — so the part is not finished yet.
 
 This part revisits part 9's augmentation article rather than replacing it.
 **s09-04** assembles the retrieved chunks; **s11-01** distils them first, so the
