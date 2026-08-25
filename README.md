@@ -105,6 +105,10 @@ ahead of the codebase.
 | s11-03 | `check_citation_integrity`, `CitationIntegrityReport` | `verify_citations`, `CitationReport` in `rag/validation.py` — per line, with a third `insufficient` status |
 | s11-03 | `Citation.locator`, `char_span` | `SourceReference.evidence` — a model-copied verbatim span, not an ingest-captured offset |
 | s11-03 | `CitationLinkResolver` (Rails) | *not implemented* |
+| s11-04 | `numeric_grounding`, `verify_claim`, `gate_line`, `consistency_spread` | *not implemented* |
+| s11-04 | consistency as dispersion | `rag/task_hours.py` — same formula, over source hours, feeding `reliability` |
+| s11-04 | `ClaimVerdict`, the strict judge | `agentic/critic.py` — `Critic`, `CriticFeedback`; fails open on error |
+| s11-04 | `status="insufficient"` | `validation.check_coherence` enforces it as an invariant |
 
 Two rows deserve more than a rename.
 
@@ -242,10 +246,14 @@ reformulate and s10-04 for *how* the fan-out is built and paid for.
 
 | 3 | [Citation and verifiable attribution](articles/s11-03-citation-and-verifiable-attribution.md) | An identifier is not a citation. A verifiable one resolves, locates the line, and is traceable — and line-level citation is an *ingestion* decision, enabled long before generation by how the sources were stored. Dangling citations are checked in code, never trusted to the model, because they look exactly like real ones. Structure is the source of truth; inline versus footnote is presentation. The AI service emits `document_id`, never URLs. |
 
-The three chain directly: 1 ends at two clean sources that disagree, 2 starts
+| 4 | [Hallucination detection and mitigation](articles/s11-04-hallucination-detection-and-mitigation.md) | Referential integrity proves the source exists, not that it says what the claim says. Three kinds of hallucination, each caught by a different technique, layered cheap-first because what an `if` can reject should not spend a model call. The judge is itself a model and has a floor no more LLM can raise. Abstention is a feature — but over-abstaining is not prudence, it is declining to do the work. |
+
+The four chain directly: 1 ends at two clean sources that disagree, 2 starts
 there and ends at "where exactly does this figure come from", 3 answers that and
-ends at the crack it cannot close — a citation pointing at a real source that
-does not back it. Article 3 is implemented in the codebase; 1 and 2 are not.
+ends at a citation pointing at a real source that does not back it, 4 hunts
+exactly that and ends at the limit of per-request checking — a guardrail is not
+a measurement. Article 3 is implemented; 1, 2 and 4 are not, though 4's warnings
+land on code that already exists.
 
 This part revisits part 9's augmentation article rather than replacing it.
 **s09-04** assembles the retrieved chunks; **s11-01** distils them first, so the
