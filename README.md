@@ -353,6 +353,15 @@ article.
 disagree, it is the only thing that resolves it. An entry with no traceable
 source is not a fact.
 
+**`scope` is shelf life**, and it takes one of two values. `evergreen` is the
+default: the argument does not depend on facts that expire, so it is as true in
+five years as today. `time-sensitive` marks an article resting on the state of
+the world when it was written — a model comparison, a market survey, a price —
+where the reasoning survives but the specifics will not. Two articles carry it:
+[s07-02](articles/s07-02-embedding-model-selection.md) and
+[s08-02](articles/s08-02-vector-database-market-2026.md). Read those against
+`added` and check the numbers before acting on them.
+
 Use `##` headings for genuinely separate ideas: **headings are chunk boundaries**,
 so a heading is a claim about what belongs together. Prefer several short
 sections over one long one — a chunk that argues two things retrieves well for

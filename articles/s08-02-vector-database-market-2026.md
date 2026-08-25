@@ -7,7 +7,7 @@ doc_type: reference-article
 series: servicio-ia
 session: 8
 series_part: 2
-scope: season-2026
+scope: time-sensitive
 source: user-supplied article (market state as of 2026)
 reading_time: 40 min
 added: 2026-08-13

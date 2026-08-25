@@ -7,7 +7,7 @@ doc_type: reference-article
 series: servicio-ia
 session: 7
 series_part: 2
-scope: season-2026
+scope: time-sensitive
 source: user-supplied article (landscape stated as of May 2026)
 reading_time: 28 min
 added: 2026-08-13
