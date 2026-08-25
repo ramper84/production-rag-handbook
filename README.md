@@ -109,6 +109,9 @@ ahead of the codebase.
 | s11-04 | consistency as dispersion | `rag/task_hours.py` — same formula, over source hours, feeding `reliability` |
 | s11-04 | `ClaimVerdict`, the strict judge | `agentic/critic.py` — `Critic`, `CriticFeedback`; fails open on error |
 | s11-04 | `status="insufficient"` | `validation.check_coherence` enforces it as an invariant |
+| s11-05 | `embedding_version`, `source_hash` columns | *absent from the schema and from the Alembic migrations* |
+| s11-05 | `EmbeddingVersion`, `is_stale`, `reindex_incremental`, shadow index | *not implemented* |
+| s11-05 | `FROM chunks` | `budget_chunks`, `transcript_chunks`, `technical_doc_chunks` — the filter belongs on all three |
 
 Two rows deserve more than a rename.
 
@@ -248,12 +251,19 @@ reformulate and s10-04 for *how* the fan-out is built and paid for.
 
 | 4 | [Hallucination detection and mitigation](articles/s11-04-hallucination-detection-and-mitigation.md) | Referential integrity proves the source exists, not that it says what the claim says. Three kinds of hallucination, each caught by a different technique, layered cheap-first because what an `if` can reject should not spend a model call. The judge is itself a model and has a floor no more LLM can raise. Abstention is a feature — but over-abstaining is not prudence, it is declining to do the work. |
 
-The four chain directly: 1 ends at two clean sources that disagree, 2 starts
+| 5 | [Reindexing and embedding versioning](articles/s11-05-reindexing-and-embedding-versioning.md) | The index rots two ways and neither raises an exception: the document changed and the vector did not, or two models' vectors share a table and cosine between them is a plausible number meaning nothing. Every vector records how it was made and queries never cross versions. Incremental is the daily tool and a trap outside its version; a model change is blue/green, verified before promotion. |
+
+Articles 1-4 chain directly: 1 ends at two clean sources that disagree, 2 starts
 there and ends at "where exactly does this figure come from", 3 answers that and
 ends at a citation pointing at a real source that does not back it, 4 hunts
-exactly that and ends at the limit of per-request checking — a guardrail is not
-a measurement. Article 3 is implemented; 1, 2 and 4 are not, though 4's warnings
-land on code that already exists.
+exactly that. Article 5 steps outside the request path to the index underneath
+it. **4 and 5 close on the same unresolved thing** from different directions —
+per-request guardrails and a healthy index both prevent damage, neither measures
+whether a change was an improvement — so the part is converging on evaluation.
+
+Against the code: article 3 is implemented, 4's warnings land on code that
+already exists, and **article 5's central recommendation is the one the codebase
+has not taken** — there is no `embedding_version` column and no `source_hash`.
 
 This part revisits part 9's augmentation article rather than replacing it.
 **s09-04** assembles the retrieved chunks; **s11-01** distils them first, so the
