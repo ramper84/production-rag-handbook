@@ -112,6 +112,9 @@ ahead of the codebase.
 | s11-05 | `embedding_version`, `source_hash` columns | *absent from the schema and from the Alembic migrations* |
 | s11-05 | `EmbeddingVersion`, `is_stale`, `reindex_incremental`, shadow index | *not implemented* |
 | s11-05 | `FROM chunks` | `budget_chunks`, `transcript_chunks`, `technical_doc_chunks` — the filter belongs on all three |
+| s11-06 | `run_ragas`, `build_eval_dataset` | `scripts/eval_ragas_s11.py`, plus `score_ragas_s11.py` and `evals/` |
+| s11-06 | golden set | `evals/golden_generation_s11.json` — 5 queries, no abstention case |
+| s11-06 | "pin the RAGAS version" | `ragas>=0.2` in `pyproject.toml`, `0.4.3` in `uv.lock`, NaN fallback in `_per_query_scores` |
 
 Two rows deserve more than a rename.
 
@@ -253,17 +256,22 @@ reformulate and s10-04 for *how* the fan-out is built and paid for.
 
 | 5 | [Reindexing and embedding versioning](articles/s11-05-reindexing-and-embedding-versioning.md) | The index rots two ways and neither raises an exception: the document changed and the vector did not, or two models' vectors share a table and cosine between them is a plausible number meaning nothing. Every vector records how it was made and queries never cross versions. Incremental is the daily tool and a trap outside its version; a model change is blue/green, verified before promotion. |
 
+| 6 | [Quality evaluation with RAGAS](articles/s11-06-quality-evaluation-with-ragas.md) | Guardrails answer "is this estimate trustworthy?"; nothing answers "is the system getting better?". Four metrics split two/two between retrieval and generation, which is what makes them a diagnosis rather than a score. The golden set is the ceiling: with no case whose right answer is "not enough data", you are rewarding the system for always answering. Offline gates regressions; production has no reference, so only two metrics survive there. |
+
 Articles 1-4 chain directly: 1 ends at two clean sources that disagree, 2 starts
 there and ends at "where exactly does this figure come from", 3 answers that and
 ends at a citation pointing at a real source that does not back it, 4 hunts
 exactly that. Article 5 steps outside the request path to the index underneath
 it. **4 and 5 close on the same unresolved thing** from different directions —
 per-request guardrails and a healthy index both prevent damage, neither measures
-whether a change was an improvement — so the part is converging on evaluation.
+whether a change was an improvement — and article 6 is what they were both
+pointing at. 6 closes the part and hands off to session 12: coordinating many
+specialised answers instead of generating one big one.
 
-Against the code: article 3 is implemented, 4's warnings land on code that
-already exists, and **article 5's central recommendation is the one the codebase
-has not taken** — there is no `embedding_version` column and no `source_hash`.
+Against the code: 3 and 6 are implemented, 4's warnings land on code that
+already exists, **5's central recommendation is the one the codebase has not
+taken** (no `embedding_version`, no `source_hash`), and 1 and 2 are not written
+yet. 6's gap is its golden set — five queries, none of which tests abstention.
 
 This part revisits part 9's augmentation article rather than replacing it.
 **s09-04** assembles the retrieved chunks; **s11-01** distils them first, so the
