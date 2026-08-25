@@ -315,10 +315,39 @@ keywords: [ingestion, chunking, metadata]
 ---
 ```
 
-Two markers are editorial rather than the author's: `> *(Figure in the
-original: ...)*` stands where an image was, and `> *(Editor's note: ...)*` carries
-a cross-reference or a flagged tension between articles. Everything outside those
-blockquotes is the article as argued.
+Blockquoted markers are editorial rather than the author's; everything outside
+them is the article as argued. There are four, all greppable by prefix:
+
+| Marker | Carries |
+|---|---|
+| `> *(Figure in the original: ...)*` | Where an image stood. Later articles describe what the figure showed, because the rendered image was supplied with the text; earlier ones only name the missing file. |
+| `> *(Editor's note: ...)*` | A cross-reference, or a tension between two articles. |
+| `> *(Editor's note — domain transfer: ...)*` | A claim that holds only because of what the estimator's corpus is. See [reading it for a different domain](#reading-it-for-a-different-domain). |
+| `> *(Editor's note — checked against the code: ...)*` | A difference between the article and the reference implementation. See [the article-to-module map](#article-to-module-map). |
+
+### Reading the code in these articles
+
+**Article bodies are reproduced as argued, and that includes their defects.**
+Several articles print functions that do not do what their own prose and figures
+say — an edge-loading reorder that puts the strongest evidence in the middle
+(s11-01), a contradiction test that fires on the weak outlier it claims to ignore
+(s11-02), a status value that is declared and never returned (s11-04). These are
+flagged in an editor's note directly beneath the code, never silently rewritten,
+because the argument is the author's and the correction is not.
+
+The practical consequence: **do not lift a function out of an article without
+reading the note under it.** Where a defect has a correct counterpart elsewhere
+in the handbook, the note names it.
+
+One exception to reproducing verbatim: a factual error about the outside world
+gets corrected in the body, with an editor's note recording what it said before.
+So far that is one — the pgvector version in s09-03.
+
+The code-checked notes and the module map were verified against
+`lidr/ai-engineering` at branch `session_11`, commit `3292744`. **They are a
+snapshot and will drift.** Re-run the check when the implementation moves: grep
+the repo for the identifiers an article names, and update the map rather than the
+article.
 
 **`source` is provenance**, and it does the real work later: when two articles
 disagree, it is the only thing that resolves it. An entry with no traceable
@@ -336,6 +365,18 @@ The series is by **Antonio Perez** (`series: servicio-ia`), read and translated
 from the Spanish originals. Article bodies are reproduced as argued; the
 worked examples inside them (construction budgets, meeting transcripts) are the
 author's own.
+
+The articles were written for a taught course and keep its vocabulary. It is
+not explained anywhere in them, so:
+
+| Term | Means |
+|---|---|
+| **the programme** | The course these articles are the reading for. |
+| **Project 2** | The IT project estimator — the system described in [the section above](#the-system-the-articles-are-about). |
+| **Module 2 / Module 3** | Blocks of the course. Module 2 built the CAG; Module 3 is the RAG arc, parts 6-8 here. |
+| **Session NN**, **SNN** | One session of the course, one part here. **S15 is referenced but not in this repo** — several articles defer production concerns (key rotation, distributed rate limiting, observability tooling) to it. |
+| **pre-session exercise** | Homework preceding a session. Its results are sometimes assumed by an article's opening. |
+| **the live session** | The taught class. Sections titled "connection with the live session" describe what was demonstrated there and are the least useful part of an article read standalone. |
 
 These articles were originally collected inside a private application repository,
 where each carried an `applies_to` frontmatter field mapping the advice onto that
@@ -369,6 +410,10 @@ moved here — what remains is the general argument.
    not merely that the claim is narrow.
 8. Grep the reference implementation for every identifier and path the article
    names, and update the article-to-module map. Renames go in the table only;
-   add an editor's note when the article asserts something about the codebase
-   that is not true, or when the code pins down a constant the article leaves
-   vague.
+   add a `checked against the code` note when the article asserts something
+   about the codebase that is not true, or when the code pins down a constant
+   the article leaves vague.
+9. Run the article's code in your head, or actually run it. Three articles so
+   far print a function that contradicts its own docstring or figure. Flag it
+   beneath the code and name the correct counterpart if the handbook has one;
+   do not rewrite the author's body.
