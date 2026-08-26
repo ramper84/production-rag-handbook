@@ -44,11 +44,10 @@ only in session 9 is the RAG flow itself named and taken apart stage by stage.
 The residual CAG layer survives the crossing — the decision was to add
 retrieval, not to delete the static context.
 
-Building the CAG is not in this repo; **deciding to leave it is.** s06-01 is that
-article and it is where the handbook starts: it reads the CAG's failure modes as
-four constraints rather than one, runs the corpus against a four-axis decision
-tree, and lands on RAG with a residual CAG layer. The handbook opens at the
-decision, not after it.
+Part 5 is the CAG chapter, and it is where the handbook now starts; s06-01 is
+where that architecture is argued *out of*, reading its failure modes as four
+constraints rather than one and landing on RAG with a residual CAG layer. The
+handbook now covers the decision from both sides.
 
 Everything from there is the same estimator, **made more production-ready one
 article at a time** — audited sources, then a real extraction pipeline, then
@@ -105,6 +104,8 @@ ahead of the codebase.
 
 | Article | Article names it | In the code |
 |---|---|---|
+| s05-01 | `extract_text_from_pdf` | `app/attachments/extractor.py` — `extract_text`, dispatching to `pypdf` / `python-docx` |
+| s05-01 | Tavily / SERP search, `find_similar_projects` | *not implemented* |
 | s06-01 | `/index/run`, `/query` | `app/api/ingestion.py` (`/api/v1/ingestion`), `app/api/search.py` |
 | s06-02 | `data_catalog.yaml` | `app/ingestion/catalog/` — `loader.py`, `models.py`, `inspect.py` |
 | s06-03 | parsers, registry | `app/ingestion/parsers/` — `budget_json.py`, `transcript_txt.py`, `registry.py`, `protocol.py` |
@@ -195,6 +196,7 @@ The articles form an arc through the pipeline, in the order the pipeline runs.
 
 | Part | Covers |
 |---|---|
+| [5 — Before RAG](#part-5--before-rag) | The CAG system, and reaching outside it without retrieval |
 | [6 — Ingest](#part-6--the-ingest-side) | Choose the architecture, then audit the sources, extract them, clean and validate, make them safe to embed |
 | [7 — Embeddings and chunking](#part-7--embeddings-and-chunking) | What an embedding is, which model to pick, how to cut the text |
 | [8 — Vector databases](#part-8--vector-databases) | Whether you need one, which one, what the index actually builds, and its ceiling |
@@ -204,6 +206,15 @@ The articles form an arc through the pipeline, in the order the pipeline runs.
 
 If you read only three: **s07-03** (chunking), **s09-03** (retrieval is not only
 cosine), **s10-02** (measure the cost, not only the gain).
+
+## Part 5 — before RAG
+
+The estimator as a CAG system: static context in the prompt, and how it reaches
+past that without retrieval yet. This is where the handbook now starts.
+
+| # | Article | What it argues |
+|---|---|---|
+| 1 | [Dynamic context from external sources](articles/s05-01-dynamic-context-from-external-sources.md) | Static context lives in code and is paid for once; dynamic context is fetched per request, costs tokens every turn, adds latency the user feels, and is **input, not program** — delimit it or invite injection. Attachments go multimodal *or* locally extracted, never both. The business database is reached by HTTP contract and never shared, and that rule survives into RAG. |
 
 ## Part 6 — the ingest side
 
