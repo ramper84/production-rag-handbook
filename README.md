@@ -113,6 +113,8 @@ ahead of the codebase.
 | s05-03 | DeepEval `GEval` suite | `evals/metrics.py` — three hand-rolled deterministic metrics; `GEval` optional behind `--llm-judge` |
 | s05-03 | golden dataset, 5-15 cases | `evals/golden_dataset.json` — 16 cases, with out-of-scope, adversarial and edge entries |
 | s05-03 | `@pytest.mark.slow` | *not configured* in `pyproject.toml` |
+| s05-05 | Boss as a third LLM call | `app/services/boss.py` — **deterministic**, `max_iterations=2`; there is no `prompts/boss/` |
+| s05-05 | `CriticIssue`, `CriticFeedback` | `app/schemas/critic.py` — 7 categories, 3 severities, `field_path`, `suggested_fix`, validator on `needs_iteration` |
 | s06-01 | `/index/run`, `/query` | `app/api/ingestion.py` (`/api/v1/ingestion`), `app/api/search.py` |
 | s06-02 | `data_catalog.yaml` | `app/ingestion/catalog/` — `loader.py`, `models.py`, `inspect.py` |
 | s06-03 | parsers, registry | `app/ingestion/parsers/` — `budget_json.py`, `transcript_txt.py`, `registry.py`, `protocol.py` |
@@ -199,7 +201,9 @@ those notes are the difference between a handbook and a case study.
 
 ## Reading order
 
-The articles form an arc through the pipeline, in the order the pipeline runs.
+The articles form an arc through the pipeline, in the order the pipeline runs —
+with part 5 in front of it, holding the architecture that came before retrieval
+and the disciplines that survive it.
 
 | Part | Covers |
 |---|---|
@@ -217,13 +221,22 @@ cosine), **s10-02** (measure the cost, not only the gain).
 ## Part 5 — before RAG
 
 The estimator as a CAG system: static context in the prompt, and how it reaches
-past that without retrieval yet. This is where the handbook now starts.
+past that without retrieval yet. This is where the handbook now starts — and
+these articles are not a pipeline, they are the architecture the pipeline
+replaced, plus the disciplines that outlive it. Testing (article 3) and role
+composition (article 5) are not CAG-specific at all; they carry straight through
+to parts 6-11.
+
+Article 4 was dropped by the author, which is why the numbering skips it. The
+figure filenames run continuously across the session (`001` … `007`), so the
+gap at `004` is the only trace of it.
 
 | # | Article | What it argues |
 |---|---|---|
 | 1 | [Dynamic context from external sources](articles/s05-01-dynamic-context-from-external-sources.md) | Static context lives in code and is paid for once; dynamic context is fetched per request, costs tokens every turn, adds latency the user feels, and is **input, not program** — delimit it or invite injection. Attachments go multimodal *or* locally extracted, never both. The business database is reached by HTTP contract and never shared, and that rule survives into RAG. |
 | 2 | [Conversational memory vs history](articles/s05-02-conversational-memory-vs-history.md) | History answers "what was said on turn 7?", memory answers "what do we know about this project?", and merging them answers both badly. Memory is distilled facts in a typed structure, independent of the turn that produced them, so it survives truncation — which is what makes the *simplest* history strategy safe. Forgetting needs three policies in three different places. |
 | 3 | [Testing and evaluating LLM systems](articles/s05-03-testing-and-evaluating-llm-systems.md) | `assert response == expected` fails 30% of the time on a system that works. Tests verify **properties**, in three families with different costs — structural, statistical, LLM-as-judge — and a healthy suite is pyramidal, because one that is all judge is slow and hangs on a single point of failure. The golden dataset is the base of everything else and is investment, not cost. |
+| 5 | [Actor-Critic-Boss](articles/s05-05-actor-critic-boss-role-composition.md) | A quality ceiling prompt refinement cannot break, because the problem is verification not instruction. Actor generates, Critic evaluates, **Boss decides** — and the third role exists because evaluating and deciding when to stop are different functions; merging them gives infinite loops or confirmation bias. Apply it to critical paths, not to every call. |
 
 ## Part 6 — the ingest side
 
@@ -431,7 +444,7 @@ not explained anywhere in them, so:
 |---|---|
 | **the programme** | The course these articles are the reading for. |
 | **Project 2** | The IT project estimator — the system described in [the section above](#the-system-the-articles-are-about). |
-| **Module 2 / Module 3** | Blocks of the course. Module 2 built the CAG; Module 3 is the RAG arc, parts 6-8 here. |
+| **Module 2 / Module 3** | Blocks of the course. Module 2 built the CAG — part 5 is its closing session, though the earlier sessions that built it are not here; Module 3 is the RAG arc, parts 6-8. |
 | **Session NN**, **SNN** | One session of the course, one part here. **S15 is referenced but not in this repo** — several articles defer production concerns (key rotation, distributed rate limiting, observability tooling) to it. |
 | **pre-session exercise** | Homework preceding a session. Its results are sometimes assumed by an article's opening. |
 | **the live session** | The taught class. Sections titled "connection with the live session" describe what was demonstrated there and are the least useful part of an article read standalone. |
