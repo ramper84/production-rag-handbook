@@ -20,8 +20,23 @@ client meeting transcripts, and produces an estimate for a new project grounded
 in what comparable past projects actually cost.
 
 Its architecture is the thing that changes. The system was **born as CAG** —
-roughly 30 hand-picked budgets pasted into the system prompt, closed in session
-05, before this handbook starts. **The jump to RAG happens across sessions 6 and
+static context in the system prompt rather than retrieval — and session 05 is
+where that chapter closes.
+
+> **What the code shows, which is not quite what the articles say.** s06-01 and
+> s09-01 describe the CAG as "roughly 30 budgets pasted into the system prompt".
+> At branch `session_05_live` the few-shot context is
+> `app/prompts/estimation/v1/examples.j2` — 57 lines, a handful of illustrative
+> projects, included at `v1/system.j2:68` — and its own header instructs the
+> model *"do not copy their numbers, use them only as a calibration anchor"*. It
+> is a style and rigour anchor, not a grounding corpus. More: `v2` and `v3` have
+> no examples file at all, and the conversational path already defaults to `v3`
+> (`CONVERSATIONAL_PROMPT_VERSION`), whose system prompt grounds itself in
+> "industry rates and standard delivery practices" plus a `<project_metadata>`
+> block. So by the end of session 05 the live prompt carried no historical
+> budgets. The articles' "frozen knowledge" argument still stands — parametric
+> rates go stale the same way — but the 30 budgets are a teaching simplification,
+> not a description of the code. **The jump to RAG happens across sessions 6 and
 7**, and it is a crossing rather than a switch: session 6 goes back to the
 sources and builds a real ingest side, session 7 turns that corpus into
 embeddings and chunks. By session 8 the estimator has somewhere to put them, and
@@ -52,8 +67,11 @@ rather than smoothed over (see s09-02 and s10-04).
 ### The code paths are snapshots, not one layout
 
 The paths in the code blocks disagree across the arc, and that is history rather
-than sloppiness: the project was **refactored into `cag/` and `rag/` folders**
-partway through, so an article's paths date it. `src/estimator/retrieval/` in
+than sloppiness: the project was **refactored into a layered architecture**
+partway through — commit `eb66136`, "reorganize app/ into layered architecture
+(CAG/RAG/Agentic)" — so an article's paths date it. That commit is also where
+`app/cache/semantic.py` became `app/generation/cag/semantic.py` (a 98% rename),
+which is how a caching module ended up wearing the CAG name. `src/estimator/retrieval/` in
 s09-05 and `app/generation/rag/retrieval/` in part 10 are the same component
 before and after that split. Read the last segment — `retrieval/`, `ingest/`,
 `generation/` — as the stable part and the prefix as a timestamp.
