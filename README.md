@@ -110,6 +110,9 @@ ahead of the codebase.
 | s05-02 | `update_metadata_llm` | `app/sessions/metadata_extractor.py` — `update_metadata`, structured output, `METADATA_EXTRACTOR_MODEL` |
 | s05-02 | sliding window, `MAX_TURNS = 6` | `max_turns=6` **plus** `anchors` and `summary` — hybrid, via `sessions/compression/` |
 | s05-02 | session TTL / archiving | *not implemented* — no `updated_at`, no expiry job |
+| s05-03 | DeepEval `GEval` suite | `evals/metrics.py` — three hand-rolled deterministic metrics; `GEval` optional behind `--llm-judge` |
+| s05-03 | golden dataset, 5-15 cases | `evals/golden_dataset.json` — 16 cases, with out-of-scope, adversarial and edge entries |
+| s05-03 | `@pytest.mark.slow` | *not configured* in `pyproject.toml` |
 | s06-01 | `/index/run`, `/query` | `app/api/ingestion.py` (`/api/v1/ingestion`), `app/api/search.py` |
 | s06-02 | `data_catalog.yaml` | `app/ingestion/catalog/` — `loader.py`, `models.py`, `inspect.py` |
 | s06-03 | parsers, registry | `app/ingestion/parsers/` — `budget_json.py`, `transcript_txt.py`, `registry.py`, `protocol.py` |
@@ -220,6 +223,7 @@ past that without retrieval yet. This is where the handbook now starts.
 |---|---|---|
 | 1 | [Dynamic context from external sources](articles/s05-01-dynamic-context-from-external-sources.md) | Static context lives in code and is paid for once; dynamic context is fetched per request, costs tokens every turn, adds latency the user feels, and is **input, not program** — delimit it or invite injection. Attachments go multimodal *or* locally extracted, never both. The business database is reached by HTTP contract and never shared, and that rule survives into RAG. |
 | 2 | [Conversational memory vs history](articles/s05-02-conversational-memory-vs-history.md) | History answers "what was said on turn 7?", memory answers "what do we know about this project?", and merging them answers both badly. Memory is distilled facts in a typed structure, independent of the turn that produced them, so it survives truncation — which is what makes the *simplest* history strategy safe. Forgetting needs three policies in three different places. |
+| 3 | [Testing and evaluating LLM systems](articles/s05-03-testing-and-evaluating-llm-systems.md) | `assert response == expected` fails 30% of the time on a system that works. Tests verify **properties**, in three families with different costs — structural, statistical, LLM-as-judge — and a healthy suite is pyramidal, because one that is all judge is slow and hangs on a single point of failure. The golden dataset is the base of everything else and is investment, not cost. |
 
 ## Part 6 — the ingest side
 
