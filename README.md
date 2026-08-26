@@ -59,12 +59,23 @@ before and after that split. Read the last segment — `retrieval/`, `ingest/`,
 `generation/` — as the stable part and the prefix as a timestamp.
 
 **Retrieval belongs to RAG**, which sets the layout to build for a new project
-from this handbook: start with `cag/`, since that is where a system that has not
-yet earned retrieval lives; create `rag/` at the point you actually adopt
-retrieval, and put the pipelines and everything retrieval-related inside it —
-ingestion, chunking, the retriever, reranking, fusion, routing. Keeping the two
-side by side rather than replacing one with the other is what the estimator did,
-and it is why its **residual CAG layer** survived the crossing.
+from this handbook: start with `cag/`, create `rag/` at the point you actually
+adopt retrieval, and put the pipelines and everything retrieval-related inside
+it — ingestion, chunking, the retriever, reranking, fusion, routing. Keeping the
+two side by side rather than replacing one with the other is what the estimator
+did, and it is why its **residual CAG layer** survived the crossing.
+
+> **CAG is two different things in this material, sharing an acronym.** In the
+> articles it is *context*-augmented generation: roughly 30 budgets pasted into
+> the system prompt, the architecture s06-01 argues its way out of. In the code,
+> `app/generation/cag/` is *cache*-augmented generation — `EstimationCache`, an
+> exact Redis cache keyed on a SHA-256 of the full prompt, and
+> `EstimationSemanticCache`, which matches on a `prompt_version:project_type:
+> detail_level:output_format` bucket plus cosine ≥ 0.92 on the description
+> embedding. The prompt-stuffing the articles mean lives in prompt building,
+> under what the code calls the Session 2 controls (`num_examples`,
+> `example_format`, `ACTIVE_OUTPUT_PROMPT`). Do not read the folder name as the
+> articles' CAG.
 
 ### Article to module map
 
