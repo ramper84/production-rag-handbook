@@ -199,6 +199,15 @@ an `> *(Editor's note — domain transfer: ...)*` block working out what survive
 the move and what does not. When you hit one that is not yet flagged, flag it —
 those notes are the difference between a handbook and a case study.
 
+## Turning this into a new project
+
+[**PLAYBOOK.md**](PLAYBOOK.md) is the process for going from a folder of
+source material (Markdown, PDFs, images) to a locally-deployable CAG/RAG/
+agentic project: the architecture decision, project layout, tech stack,
+`ARCHITECTURE.md`, `docker-compose.yml`, and a phased build order, each
+justified against the articles below and against the two systems built from
+them.
+
 ## Reading order
 
 The articles form an arc through the pipeline, in the order the pipeline runs —
