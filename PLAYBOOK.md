@@ -102,8 +102,14 @@ before deciding architecture:
 
 - **What is each source?** Format, approximate volume (item count, not just
   file size), and whether it is a one-time snapshot or something that grows.
-- **How fresh does an answer need to be?** Static reference vs. daily/weekly
-  refresh vs. real-time.
+- **How fresh does an answer need to be?** Three tiers, not two: **static**
+  (doesn't change during the project's life), **scheduled refresh** (changes
+  on a cadence a batch job can keep up with — hourly, daily, weekly), or
+  **live pass-through** (changes faster than any refresh job could —
+  streaming quotes, live sensor readings, live inventory). The third tier is
+  not "scheduled refresh but more often" — it is a different retrieval
+  architecture, not a faster cron job. See Section 2's "Live pass-through"
+  note, directly after Axis 3, before picking a phase for it.
 - **What will people actually ask it?** Collect 5-10 concrete example
   queries or interactions directly from the user — not inferred from the
   source documents. Section 2's Axis 2 ("do queries name their entities
@@ -145,8 +151,23 @@ rest of the system has retrieval elsewhere.
 systems end up composing CAG for one path with something else for another,
 as both reference projects do.
 
-→ **If the corpus is large, grows over sessions, or must reflect near-real-time
-state**, CAG alone will not hold. Continue to Axis 2.
+→ **If the corpus is large or grows over sessions**, CAG alone will not hold.
+Continue to Axis 2. **If it must reflect live state** rather than merely
+being large, that is not a "continue to Axis 2" situation on its own — read
+the live-assembled-CAG trap below, then the live pass-through note after
+Axis 3, before assuming Axis 2/3 apply unmodified.
+
+**A named trap: "live-assembled CAG."** A pattern that gathers a small,
+bounded set of live readings fresh at request time — scan a watchlist, poll a
+handful of sensors, pull today's queue depth — and stuffs the lot into one
+prompt looks exactly like CAG mechanically (the whole corpus, one
+full-attention pass, no retriever to get it wrong). It is not CAG by this
+axis's own test, because the corpus **does change between requests** — that
+was the premise Axis 1 just used to say yes. Build it as CAG's mechanics
+(gather-then-stuff, no chunking, no index) but never assume the result is
+cacheable or diff-able across requests the way real CAG's static block is.
+This is the small-corpus special case of "Live pass-through," covered right
+after Axis 3.
 
 ### Axis 2 — Do the queries name their entities exactly?
 
@@ -201,6 +222,64 @@ Once semantic retrieval is justified, the defaults from Parts 7-10 are:
   "treacherous quadrant"; naming it in the plan is enough to keep it out of
   v1.
 
+### Cross-cutting: live pass-through, when the source outruns any refresh job
+
+**Flagged explicitly, like Axis 5: no article in this handbook covers
+streaming or live-data architecture.** Parts 6-11 are written against a
+corpus that is ingested, then queried — even s10-06's temporal decay is about
+weighting a retrieval *ranking* by age, not about a source that changes
+between the start and end of a single request. Everything below is this
+playbook's own extrapolation.
+
+This is not a sixth axis. Axes 1-5 decide **which** retrieval architecture to
+build; live pass-through is orthogonal — it constrains **how** whichever
+architecture was chosen reads its source, for the slice of the corpus that
+changes faster than any scheduled job could keep up with (streaming market
+data, live sensor readings, live inventory counts, a live queue depth).
+
+**The architecture, in two parts that must not be merged:**
+
+1. **The live read itself is never pre-ingested, chunked, or embedded.** At
+   request time, read the live source directly (an API call, a cache read),
+   take one bounded snapshot, and reason over that snapshot. Do not build a
+   pipeline that tries to keep an index — or an LLM's context — continuously
+   current with a feed; a request-response model answering from a snapshot
+   taken a second ago is a normal, correct system, while one trying to stay
+   subscribed mid-reasoning is chasing data that will always be stale by the
+   time it responds. If a genuine live-monitoring surface is needed, that is
+   a dashboard for a human, not something piped into the LLM's context.
+2. **What the read produces — and what was concluded from it — is durable
+   exhaust, and that gets persisted normally.** The live temperature reading
+   itself is never stored raw and queried later; the fact that *this system
+   read 71°F at 14:32 and flagged it normal* is an ordinary timestamped
+   record. That record set is what accumulates into a real corpus, and it is
+   answered by Axis 2's SQL-typed retrieval exactly like any other
+   entity-named history — "how often did this sensor read high last week" is
+   a `WHERE` clause over the exhaust, never a live poll repeated for every
+   historical instant. `s13-03` names the same split independently, from
+   the Axis 5 orchestration side: an agent run's own execution state
+   (short-term memory — what one run needs to resume, ephemeral, belongs in
+   whatever checkpointer/recorder the loop uses) is not the durable history
+   a later query reasons over (long-term memory — belongs in the ordinary
+   business store, Axis 2's territory). **A checkpointer, or any per-run
+   recorder, is not your product database** — the same rule as this
+   section's durable-exhaust point, arrived at from a different direction.
+
+**A freshness budget, not a vague "real-time."** State a concrete maximum
+staleness the system will tolerate (seconds, not "as fresh as possible") and
+enforce it in code — a read older than the budget is flagged or rejected, not
+silently served as current. The cheapest implementation for a local v1 is a
+short-TTL Redis cache in front of the live source (already in the stack, no
+new dependency); reach for real streaming infrastructure (a message queue, a
+subscription pipeline) only once a measured latency problem justifies it,
+the same "smallest thing that works" discipline Axis 5 applies to
+orchestration.
+
+→ **If Section 1 found a live pass-through source**, Section 8's Phase 9
+covers it — see that phase's updated description. If the corpus is fully
+static or only needs scheduled refresh, live pass-through does not apply and
+Phase 9 is skipped as usual.
+
 ### Axis 4 — Does anything need an agentic (Actor-Critic-Boss) layer?
 
 `s05-05` and both reference projects converge on the same answer: add this
@@ -218,12 +297,17 @@ fantasy) rather than building speculative infrastructure.
 
 ### Axis 5 — Does this actually need multi-agent orchestration?
 
-**Flagged explicitly: no article in this handbook argues for this.** Parts
-5-11 stop at a bounded Actor-Critic-Boss loop (Axis 4), and the README says
-so itself — Part 11 hands off to *"session 12: coordinating many specialised
-answers instead of generating one big one,"* which is not written yet in
-this repo. Everything below is this playbook's own extrapolation, held to
-the same evidence standard the articles use, not a summary of one.
+**Backed by `s12-01`**, as of this section's last revision — this axis was
+written before that article existed, as this playbook's own extrapolation
+held to the same evidence standard the articles use, and s12-01 has since
+confirmed rather than overturned it: same "can you pre-map the tree" test,
+same cost/latency/non-determinism accounting, same default answer. Where the
+two differ, `s12-01` §6's five-question framework is the more precise
+statement and is cited directly below. Parts 5-11 still stop at a bounded
+Actor-Critic-Boss loop (Axis 4) — `s12-01` §"Editor's note — relationship to
+s05-05" is explicit that ACB is not an instance of the general agent this
+axis is about, since ACB has no equivalent to `s12-01`'s `model.decide`
+choosing *which* tool to call from an open-ended set.
 
 **Neither reference project uses agent orchestration, and both say so on
 purpose.** The estimator composes CAG/RAG/Agentic through one conductor —
@@ -241,8 +325,10 @@ the per-stage run recorder built in Section 8's repo-scaffold phase).
 outcome of running this axis honestly is that the steps *can* be enumerated
 in advance, in which case the answer is a fixed pipeline (Phase order in
 Section 8) with a per-stage recorder for observability — not an agent
-framework. Reach for orchestration only when **at least one** of these is
-true, and say in the plan which one:
+framework. `s12-01` §6 opens with exactly this question — *"can you pre-map
+the decision tree?"* — and calls it *"the strongest signal that you don't
+need agency"* when the answer is yes. Reach for orchestration only when **at
+least one** of these is true, and say in the plan which one:
 
 1. **The set or order of steps cannot be known ahead of time** and genuinely
    depends on intermediate results — open-ended tool use where the next tool
@@ -268,29 +354,95 @@ varies run to run, not just the model's output; spend and latency lose the
 fixed ceiling a known-length pipeline gives for free; and the per-stage
 observability that makes fantasy's pipeline debuggable (*"a run reporting
 $0.00308 while its stages summed to $0.00319 was caught"*) is exactly what a
-dynamic step count makes harder to keep. None of that is a reason never to
-build it — it is the reason to name the specific trigger before starting,
-the same discipline Section 2's "Composing more than one answer" applies to
-picking a conductor.
+dynamic step count makes harder to keep. `s12-01` puts a number on the spend
+side: roughly ten cents per task ≈ 30-50k tokens as a rule of thumb, and a
+service running a million requests a month at five times the necessary
+token spend burns on the order of an extra $1.5M a year — whether that is
+reasonable depends entirely on the value of each task, which is the same
+"does the value justify the spend" question as trigger 2 above, stated as
+one of `s12-01` §6's five decision questions directly. None of that is a
+reason never to build it — it is the reason to name the specific trigger
+before starting, the same discipline Section 2's "Composing more than one
+answer" applies to picking a conductor.
 
 → **If Axis 5 selects orchestration**, default to the smallest thing that
-works for a local v1, in this order of preference:
+works for a local v1, in this order of preference. State where the chosen
+shape sits on `s12-05`'s three axes (single-step vs. iterative, reactive
+vs. proactive, fixed vs. dynamic plan) in the plan — not to classify it into
+a box, but because articulating the choice is what stops it drifting into
+more iteration than the problem needs. And per `s12-05` §4, orchestration
+doesn't have to apply to every request: a cheap router deciding per-input
+whether the fixed pipeline or the agent handles it — cascading deterministic
+checks first, an LLM classifier only when they don't decide it, a fallback
+rather than a raised error on classifier failure — is usually cheaper than
+committing every request to the agent, and the estimator's own retrieval
+router (s10-05) is a working precedent for exactly that cascade shape, just
+routing to collections instead of to pipeline-vs-agent.
 - A **hand-rolled supervisor loop**: a router function, a small fixed
   registry of specialist functions/agents, a **hard iteration/step cap**, and
   a per-step recorder logging which specialist ran, what it produced, and
   what it cost — the same shape as fantasy's `pipeline/RunRecorder`, just
   with the router's target chosen at runtime instead of fixed. This is
   usually sufficient and stays inside the pytest-testable, deterministic-
-  where-possible discipline the rest of this playbook holds to.
+  where-possible discipline the rest of this playbook holds to. Two fields
+  `s12-02` adds to that recorder, both easy to skip and expensive to have
+  skipped later: a **handover field** (a `needs_human`/`needs_review`-shaped
+  status distinct from Axis 4's deterministic Critic — this one is the
+  agent's own judgment call that a case is outside what it can verify, not a
+  rule check — `s13-05`'s `interrupt()`/`Command(resume=...)` is a concrete
+  implementation of it, gated behind a checkpointer, with a real gotcha: the
+  paused node re-executes from its start on resume, so whatever runs before
+  the pause must be cheap and idempotent), and, if the underlying model does
+  its reasoning natively rather than in visible text, deliberately captured
+  **reasoning summaries** — that trace is opaque by default in reasoning
+  models, not something the
+  recorder gets for free the way a workflow's stage log does. One more
+  thing `s13-04`/`s13-05` caught only by combining two otherwise-correct
+  pieces of guidance: **give the handover status its own distinct value,
+  never reuse a bounded-retry loop's "not done yet" status for it.** A
+  routing check that only tests "did this succeed" against a single status
+  field cannot tell "the deterministic check says try again" apart from "a
+  human already looked at this and said no" — and an automated retry
+  silently overriding an explicit human rejection is a worse bug than the
+  one the handover field exists to prevent.
 - **A graph-based agent framework** (e.g. LangGraph), only once the hand-rolled
   loop has been tried and the branching shape has actually been observed to
   need it — the same "measure before adopting" gate Section 2/Axis 3 applies
   to reranking and hybrid search (s10-02). Never adopt a framework
-  speculatively as project scaffolding.
+  speculatively as project scaffolding. `s13-01` sharpens this from a
+  two-way call (loop or graph) into three: a single model call needs no
+  orchestration framework at all; a single reasoning-and-tool loop needs a
+  loop, not a *graph* — the hand-rolled version above or a provider/library
+  shortcut (e.g. `create_agent`) are equally fine, a graph framework adds
+  little here; only genuine graph shape — steps with real dependencies,
+  conditional routing, parallelism, a need to persist and resume state
+  across a restart, a human-approval checkpoint — earns the heavier tool.
+  Reaching for one on "it has branches" alone is weaker justification than
+  reaching for one because state has to survive a restart or a pause: per
+  `s13-01`, over 60% of production agent incidents trace to state
+  management specifically, not to the routing or parallelism a hand-rolled
+  loop can already express without much pain (`s12-04`'s conditional branch,
+  `asyncio.gather`'s parallelism).
 - **The hard cap and full per-step logging are non-negotiable regardless of
   which of the above is chosen** — an unbounded agent loop is an unbounded
   spend loop, and Section 4's "guardrails fail closed" rule applies to the
-  step cap exactly as it does to `budget.py`/`rate_limit.py`.
+  step cap exactly as it does to `budget.py`/`rate_limit.py`. `s12-06`'s
+  measurement discipline is what makes that cap a number instead of a
+  guess: log each turn's token usage (input/output/reasoning tokens
+  separately — the last is already billed as output, tracked apart only
+  for visibility), because growing input context, not model output, is
+  where the multiplier actually lives; watch the **p95 run, not the
+  mean** — a confused agent iterating to the cap is the long tail that
+  wrecks the average budget, not a rounding error; and attribute cost per
+  tool/specialist, since "the agent is expensive" is not actionable but
+  "60% of spend is one tool's unslimmed results being dragged along every
+  turn" is. `s13-04` names the distinction the cap itself has to respect:
+  a framework's own global limit (a graph runtime's recursion cap, or
+  equivalent) is a **safety net, not the strategy** — bound retries in your
+  own logic (a counter in state, checked before each re-attempt, giving up
+  cleanly past N) so the loop has a designed exit, and treat the
+  framework's limit as the backstop that catches a bug in that logic, not
+  as the mechanism itself.
 
 → **If no trigger above is met**, skip orchestration for v1, build the fixed
 pipeline instead, and note the untriggered condition as a reserved slot
@@ -353,10 +505,11 @@ Deviate with a stated reason in the plan, not silently.
 | DB access | SQLAlchemy (async, if RAG/CAG persistence needs an ORM) **or** raw SQL via psycopg 3 (if the domain logic *is* the query, à la fantasy) | Layered/estimator-style projects benefit from the ORM's typed models; Lean/analytics-heavy projects read more honestly as SQL that a person can `EXPLAIN` |
 | Schema migrations | Alembic, always | Never `CREATE TABLE IF NOT EXISTS` in app code — one schema owner or you get fantasy's ADR-009 failure mode (two writers silently declaring different schemas) |
 | Cache / session / memory | Redis (`redis/redis-stack` if a semantic/vector cache is needed, otherwise plain `redis:alpine`) | Exact-match cache, conversational memory, rate-limit counters, run/audit records |
-| LLM access | LiteLLM + Instructor, one wrapper, cross-provider fallback (e.g. `gpt-4o-mini` primary, a Claude Haiku/Sonnet fallback) | One place spend and retries are recorded; never call a provider SDK directly from business logic |
+| Live pass-through freshness budget (only if Section 1 found a live source) | The same Redis instance, short TTL matching the stated staleness budget | No new dependency — reach for real streaming infrastructure only once a measured latency problem justifies it |
+| LLM access | LiteLLM + Instructor, one wrapper, cross-provider fallback (e.g. `gpt-4o-mini` primary, a Claude Haiku/Sonnet fallback) | One place spend and retries are recorded; never call a provider SDK directly from business logic. If any tool-calling is in play (Axis 4/5), s12-03 is the second reason: OpenAI and Anthropic use different vocabulary for an identical tool-calling contract (`function_call`/`call_id` vs. `tool_use`/`tool_use_id`), and an aggregator is where that transport difference gets isolated so tool logic never has to know which provider is behind it |
 | Prompts | Jinja2 templates, versioned by directory (`prompts/<name>/v1/`, `v2/`, …) | A prompt change is a new version, not a silent edit — both reference projects treat this as load-bearing |
 | Structured output | Instructor (Pydantic-validated LLM output, with re-prompt on validation failure) | Avoids hand-rolled JSON parsing and repair hacks |
-| Logging | `structlog` | JSON in prod, console in dev; every pipeline stage logs its own name |
+| Logging | `structlog` | JSON in prod, console in dev; every pipeline stage logs its own name. `s13-06`: graduate to real spans/traces (Logfire, on OpenTelemetry — one line each to instrument FastAPI/asyncpg/httpx) only once a measured need shows up, same "don't adopt speculatively" discipline as everywhere else in this table — the concrete trigger is a database-backed service where the problem keeps turning out to be the seam between a call and its result (a slow query, a stalled connection) that structured logs alone don't localize as well as a trace does |
 | Guardrails | Input: size limits, prompt-injection scan, relevance/topicality check. Output: scope/format filter, PII/disliked-content filter. Spend: a hard cost ceiling that **fails closed** | Caches and memory degrade silently (fail open) on an outage; anything that bounds spend must fail closed (fantasy ADR-008) |
 | Testing | pytest, pyramidal (s05-03): mostly structural/deterministic assertions, some statistical, a thin layer of LLM-as-judge | A suite that is all judge-based is slow and brittle on one point of failure |
 | Frontend (v1) | **Streamlit** | Python-native, no separate build step, fast enough to stand up in the same repo and container set as the API — the right choice whenever the goal is "locally deployable for manual testing," not a production customer UI. See Section 4a |
@@ -583,6 +736,10 @@ Notes to carry into the plan verbatim:
 - **`.env` is never committed — only `.env.example` is.** `.env` holds real
   LLM provider keys from the moment it's created; the project's `.gitignore`
   (Section 11.1) excludes it from the first commit, not as a later cleanup.
+- If Section 1 found a live pass-through source, its `FRESHNESS_BUDGET_SECONDS`
+  (or equivalent) belongs in `.env.example` next to the other retrieval knobs
+  — a staleness threshold is a config value with a stated default, not a
+  hardcoded constant buried in the live-read client.
 
 ---
 
@@ -604,7 +761,8 @@ Notes to carry into the plan verbatim:
 │   ├── ingest/           # offline: source → parse → validate → Postgres
 │   │   ├── parsers/
 │   │   ├── store/
-│   │   └── refresh.py    # ONLY if Phase 9 (Scheduled refresh) applies
+│   │   └── refresh.py    # ONLY if Phase 9 applies — scheduled-refresh job,
+│   │                     #   or a live_client.py + TTL cache if live pass-through
 │   ├── prompts/          # versioned Jinja2, one dir per prompt family
 │   └── routers/          # thin HTTP, one file per capability
 ├── migrations/           # Alembic; Alembic owns the schema, nothing else creates tables
@@ -645,7 +803,7 @@ of CAG/RAG/Agentic composing on one request:
 │   │   │   └── specialists/                    #   Axis 5 ONLY: the fixed, named registry the router picks from
 │   │   └── conversation/       #   session/memory handling, if multi-turn
 │   ├── ingestion/               # offline pipeline feeding generation/rag
-│   │   └── catalog/ parsers/ cleaning/ pii/ refresh.py (ONLY if Phase 9 applies)
+│   │   └── catalog/ parsers/ cleaning/ pii/ refresh.py or live_client.py (ONLY if Phase 9 applies)
 │   └── api/                    # thin routers, no business logic
 ├── migrations/ (alembic)
 ├── evals/
@@ -687,13 +845,13 @@ this playbook.
 | **6** | CAG layer: build the static context block, delimited and sized against a token budget | Part 5, s09-01 | Axis 1 did not select CAG |
 | **7** | Chunking: pick the strategy per document type (structural for records, recursive for prose) | s07-03, s07-04 | Axis 3 did not select vector RAG |
 | **8** | Embeddings + persistence: model choice, pgvector schema (typed columns + JSONB split), atomic ingest transaction, **no index yet** | s07-01/02, s08-00/04 | Axis 3 did not select vector RAG |
-| **9** | Scheduled refresh: wrap Phases 2-4 (and 7-8 if RAG) as a repeatable job — fingerprint what changed rather than reprocessing everything, if Section 1 found the corpus is not a one-time snapshot | s06-02's freshness axis; the pattern is fantasy's `ingest/refresh.py`, not an s-numbered article | Section 1 found the corpus static/one-time |
-| **10** | Retrieval: SQL-typed retriever (Axis 2) or vector retriever with top-k + threshold + soft-fail (Axis 3) | s09-03, or the SQL-retrieval pattern in fantasy §5 | never — every architecture has *a* retrieval stage |
+| **9** | Freshness, per Section 1's three tiers: **scheduled refresh** wraps Phases 2-4 (and 7-8 if RAG) as a repeatable job that fingerprints what changed; **live pass-through** builds the request-time live-read client plus its freshness-budget cache instead, per Section 2's cross-cutting note — the two are different code, never both for the same source | s06-02's freshness axis for scheduled refresh; live pass-through is this playbook's own extrapolation, not an s-numbered article | Section 1 found the corpus fully static |
+| **10** | Retrieval: SQL-typed retriever (Axis 2), vector retriever with top-k + threshold + soft-fail (Axis 3), or a live-read client reading straight from Phase 9's live pass-through source (no store in between for the volatile part) | s09-03, or the SQL-retrieval pattern in fantasy §5 | never — every architecture has *a* retrieval stage |
 | **11** | Augmentation: structured context assembly (XML-delimited sources with metadata), never `"\n\n".join` | s09-04 | never |
 | **12** | Generation: prompt template (versioned), structured output via Instructor, citation/provenance fields carried through | s09-04, s11-03 | never |
 | **13** | Guardrails: input (size, injection, relevance), output (scope, dedupe, disliked-content), spend (fails closed) | Part 5 art. 1, fantasy `guardrails/` | never |
 | **14** | Agentic layer, if Axis 4 selected it: deterministic Critic against the domain rulebook, deterministic Boss with a bounded iteration count | s05-05 | Axis 4 did not select it |
-| **15** | Multi-agent orchestration, if Axis 5 selected it: the hand-rolled supervisor loop (router + fixed specialist registry + hard step cap + per-step recorder) named in Axis 5, built and tested **after** the fixed-pipeline phases above exist, never as a replacement for them | Axis 5 — extrapolation beyond the handbook's articles, not backed by an s-numbered one | Axis 5 selected no trigger — the default for almost every project |
+| **15** | Multi-agent orchestration, if Axis 5 selected it: the hand-rolled supervisor loop (router + fixed specialist registry + hard step cap + per-step recorder) named in Axis 5, built and tested **after** the fixed-pipeline phases above exist, never as a replacement for them | s12-01, Axis 5 | Axis 5 selected no trigger — the default for almost every project |
 | **16** | Advanced retrieval, only against a measured gap: reranking, hybrid search, query rewriting, routing, temporal decay | Part 10 | no measured gap yet — leave as a reserved slot |
 | **17** | Golden dataset + eval harness: pyramidal tests (structural, statistical, judge), a golden set from the start (5-20 cases minimum), built from the example queries collected in Phase 2 | s05-03, s10-02 | never |
 | **18** | Frontend: Streamlit calling the API over `httpx`, one screen per capability | Section 4a | never for v1 |
@@ -702,7 +860,7 @@ this playbook.
 
 Not every phase runs for every project. Rather than memorizing a numeric
 range, check each phase's own **"Skip if…"** column — several (CAG,
-Chunking, Embeddings, Scheduled refresh, PII, Agentic, Multi-agent
+Chunking, Embeddings, Freshness, PII, Agentic, Multi-agent
 orchestration, Advanced retrieval) depend directly on which axis fired in
 Section 2 or what Section 1's intake found, and that selection is exactly
 what makes the delivered plan project-specific rather than a generic RAG
@@ -732,6 +890,23 @@ project:
       answer it's predicting is invisible in testing and wrong in
       production.
 - [ ] Spend/budget guardrails fail **closed**; caches/memory fail **open**.
+- [ ] **If Axis 5 selected orchestration, this checklist is known-incomplete
+      for it — say so in the plan rather than silently applying it as-is.**
+      s12-01 names the problem directly (non-determinism means checking
+      output against an expected value is no longer enough) and no article
+      in this handbook resolves it: what a golden set should look like when
+      the *path* itself isn't fixed, and whether grading only the final
+      answer is sufficient when a well- or badly-chosen path (s12-05) is
+      part of what's being built, are open questions here, not settled
+      ones. Minimum honest bar until better guidance exists: grade the
+      final answer against the golden set as usual, log every run's full
+      trace (s12-02/s12-04) for manual review even when the graded answer
+      passes, and treat "correct answer, obviously wrong path" as a finding
+      to write down, not a pass.
+- [ ] If a live pass-through source exists, a read older than the stated
+      freshness budget is caught by a test (flagged or rejected), not served
+      as if it were current — the budget is enforced in code, not just
+      documented as an intention.
 - [ ] `docker compose up` from a clean checkout brings up every service
       healthy and the golden set runs end-to-end with no external
       dependency besides the LLM provider key.
@@ -951,10 +1126,12 @@ up the code cold]
 against the actual source material and record the outcome: which axis
 decided it (CAG / SQL-retrieval RAG / vector RAG / hybrid / multi-agent
 orchestration), the composition strategy if more than one path applies, and
-the one-line reason. Axis 5 (orchestration) is extrapolation beyond what the
-handbook's articles argue for and should stay unselected unless a specific
-trigger from §2 is named — do not fill it in as the default. Do not fill any
-of this in before the examples exist.]
+the one-line reason. Axis 5 (orchestration, backed by s12-01) should stay
+unselected unless a specific trigger from §2 is named — do not fill it in as
+the default just because an article now backs the axis. Also record
+whether Section 1 found a live pass-through source (§2's cross-cutting note,
+not a sixth axis) and, if so, the stated freshness budget. Do not fill any of
+this in before the examples exist.]
 
 ## 3. Project tier and structure
 

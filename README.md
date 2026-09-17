@@ -351,6 +351,277 @@ overlap — chunk order, truncation — s11-01 goes further, and in one place ge
 it wrong: its edge-loading function inverts its own intent, and s09-04's
 `reorder_u_pattern` is the correct implementation. Flagged in place.
 
+## Part 12 — coordinating many specialised answers
+
+| # | Article | What it argues |
+|---|---|---|
+| 1 | [From pipeline to agent: when your RAG system needs a decision layer](articles/s12-01-pipeline-vs-agent-decision-layer.md) | A fixed pipeline is predictable, cheap and testable, and stays the default for any problem whose decision tree can be pre-mapped. An agent buys exactly one thing — adaptive orchestration over a problem whose shape isn't known until the input is read — at a real, compounding cost: latency, token spend, non-determinism, and errors that build on each other instead of staying bounded. Five questions decide it, the sharpest being whether you can pre-map the tree at all. Applied to the estimator: the pipeline stays default for simple transcripts; an agent becomes a decision layer above it for multi-component ones, promoting the pipeline's own steps to tools rather than replacing them. |
+| 2 | [Anatomy of an agent: what happens inside the loop](articles/s12-02-agent-anatomy-inside-the-loop.md) | "A loop" doesn't say what happens inside one turn of it. Five organs, named so they can be debugged: reasoning (decide the next action — now largely native and opaque inside reasoning models, with reasoning summaries as the only observability lever), planning (decide the shape of the whole, upfront or emergent), action (the one point the agent touches anything outside itself, gated by least privilege), observation (the agent's only ground truth — an informative error is what lets it recover, a mute one is what makes it fail incomprehensibly), and handover (a `needs_review` status a human or another agent picks up, with an explicit contract for what transfers). State grows one decision-and-observation pair every turn, so every call is more expensive than the last. |
+| 3 | [Function calling in practice: tools, schemas, and the contract with the model](articles/s12-03-function-calling-tools-schemas-contract.md) | The model never executes your code — it emits a structured request, your code runs it, you return the result keyed by `call_id`. A tool is four parts, and the description is the highest-leverage one: a wrong tool choice or invented argument is almost always a vague description, not a model failure. Parallel tool calls in one turn are common and should be gathered together, not answered one by one. OpenAI and Anthropic use different vocabulary for an identical contract — isolate the transport difference in a thin adapter or an aggregator like LiteLLM, never in tool logic. Design tools the way you'd design an API for a colleague who only reads the signature. |
+| 4 | [The agentic loop, step by step](articles/s12-04-agentic-loop-step-by-step.md) | A working estimation agent fits in about fifty lines, built by hand with no orchestration framework — not because frameworks are bad, but because assembling the loop raw is the only way to know what they automate for you. A tool registry decouples which tools exist from how the loop works; the loop calls the model, runs whatever it requests in parallel, returns results keyed by `call_id`, and repeats under a `MAX_STEPS` guard implemented as a `for`/`else`; the output stays Pydantic-typed regardless of which path the run took. A traced run shows the agent reading a weak observation and reformulating before computing on it — the thing a fixed pipeline structurally cannot do. |
+
+Article 1 opens the part where Part 11 left off — coordinating multiple
+answers instead of generating one — from the orchestration side rather than
+the augmentation side; article 2 opens the loop article 1 argued for and
+names what's inside one turn of it; article 3 is article 2's action/
+observation organs expanded into the actual mechanics; article 4 assembles
+1-3 into roughly fifty runnable lines — nothing conceptually new, the first
+version specific enough to execute. All four are, so far, the only articles
+in this handbook written **ahead of** the reference codebase rather than
+behind it: no `model.decide` loop, tool router, `AgentResult`,
+`needs_review` status, `run_agent`, `TOOL_REGISTRY`, or raw
+`tools=`/`function_call` exchange exists yet in `lidr/ai-engineering` as of
+`session 11 completed` — on the Rails side, `estimator-web` still consumes a
+single structured `EstimationResponse`, not a status-discriminated result,
+and on the Python side every generation call goes through Instructor's
+structured-output coercion, a different application of the same
+tool-calling primitive, not an instance of articles 3-4's multi-turn
+exchange. Article 4's own `Estimate`/`ComponentEstimate` sketch also
+collides by name, not just by absence: a real `Estimate` already exists
+(`app/generation/rag/schemas.py`, Session 9), module-and-task shaped with
+citations and confidence-gating, nothing like article 4's flat
+components/hours/notes — a third `Estimate` in as many sessions if this
+gets built without renaming one of them; see the article's own closing note.
+See each article's own closing editorial notes for where they sit relative
+to Part 5's Actor-Critic-Boss (a bounded loop over a fixed role set, not an
+instance of any of the four articles' open-ended agent — and article 2's
+handover is a judgment call the agent itself makes, not the deterministic
+check Axis 4's Critic is), for two independent systems outside this
+handbook's reference estimator — `fantasy` and an unpublished
+trading-advisor project — that reached these articles' conclusions on their
+own before any of them existed to cite, and for article 3's precise
+distinction between tool-calling used to coerce one structured response
+(what the codebase already does) and tool-calling used to let a model
+choose among actions across turns (what none of it does yet).
+
+| 5 | [Agent patterns and designing quality tools](articles/s12-05-agent-patterns-and-tool-design.md) | Agent shape is three lenses on one design decision, not a catalog — single-step vs. iterative (cost vs. need), reactive vs. proactive (robust-but-myopic vs. efficient-but-brittle), fixed plan vs. dynamic planning (auditable vs. adaptive) — non-orthogonal, so state where an agent sits on each rather than picking a type. Shape needn't be a system constant: a cheap classifier routing simple inputs to a single step and complex ones to the iterative agent avoids paying the worst case on every request. Once shape is fixed, almost all remaining behavior is governed by tool design — the model reads only names, descriptions and schemas, so a wrong tool choice is almost always a vague description, not a model failure, and the fix is usually one sentence found by reading traces, not a bigger model. |
+
+Article 5 closes the session so far by naming, retrospectively, what
+articles 1 and 4 already did without arguing for it explicitly: its
+routing pattern is article 1 §7's cheap-router idea generalized into a
+named principle, and its three shape axes describe the specific choices
+article 4's `run_agent` trace already demonstrated (iterative, reactive,
+dynamically planned) rather than proposing something new. Its own routing
+pattern also has a closer precedent in the reference codebase than "not
+built yet" — `app/generation/rag/retrieval/router.py` (Session 10) already
+implements the exact cascade shape a pipeline-vs-agent classifier would
+want (cheap deterministic checks first, an LLM classifier only when they
+don't decide it, fallback rather than a raised error on classifier
+failure), just for a different decision — routing a query to collections,
+not a transcript to a pipeline or an agent. See the article's own closing
+notes for that precedent in full, and for a corrected domain-transfer point
+from the unpublished trading-advisor project: its `risk_critic.py` is not a
+point on these axes at all — zero LLM calls, so there's no `model.decide`
+for them to describe, the same category error s12-02's note already warns
+against for Axis 4's Critic. The genuine single-step instance there is
+`llm_service.py`, one generation call with no tool the model itself chooses
+to invoke — this article's single-step case in its most minimal form.
+
+| 6 | [What an agent costs](articles/s12-06-what-an-agent-costs.md) | "The agent is more expensive" isn't a budgetable number. Four additive sources, the dominant one being growing context — every turn resends everything accumulated so far, so cost fattens with each step rather than scaling linearly. A worked example lands at roughly 6x a pipeline's cost, almost entirely in input tokens, not model output (the section's own "5x" heading disagrees with its own arithmetic — flagged, not corrected). Every call already returns exact usage, so a small ledger gives full visibility; measure per-step cost, the p95 not the mean (a confused agent's long tail wrecks the average budget), and the ratio against the pipeline, not the agent's cost alone. Five levers ranked by impact: route before the agent ever sees simple cases, trim context, cap the tail, match model/reasoning effort to the sub-task, cache what's deterministic. |
+
+Article 6 is this session's cost deep-dive, and it's where the $0.10/task
+and $1.5M/year-at-scale figures article 1 already quoted — and
+`PLAYBOOK.md`'s Axis 5 already cites — get derived rather than repeated;
+the numbers don't change, only where they come from. It's also the first
+article in this part with a real, working ancestor in the codebase rather
+than an absence to note: `app/foundation/llm/wrapper.py` already prices
+every call (`MODEL_COSTS`, `_estimate_cost`, a `cost_usd` on each response)
+— what's missing is accumulation across a loop's turns, because no
+multi-turn loop exists yet to accumulate over. See the article's own
+closing notes for two unit/vocabulary mismatches worth catching before
+wiring this in (per-1k vs. the real code's per-1M pricing scale;
+Responses-API-style usage fields vs. the real code's Chat-Completions-style
+ones via LiteLLM, the same API vocabulary split s12-03 already flagged,
+recurring here on the billing side) and for the 5x/6x inconsistency in
+full.
+
+Closing the six: error handling, monitoring and evaluation all run through
+this part, but not evenly — two are threaded through every article, one is
+raised and left open.
+
+**Error handling has three tiers, named across articles rather than in
+any single one.** A tool failing is not the agent failing: article 4's
+`execute_tool` dispatch turns an exception into an observation instead of
+crashing the loop, and articles 2 and 3 both argue the same point from
+different sides — an informative failure ("1 weak match, low confidence")
+is what lets the model reformulate, a mute "error" is what leaves it blind.
+The loop itself failing — not converging — is a second, higher tier:
+article 4's `MAX_STEPS`/`for`-`else` guard turns that into an explicit
+`max_steps_exceeded` status, never a silent wrong answer or an unbounded
+bill. And the agent recognising its *own* limit is a third, different from
+both: article 2's `needs_review` handover isn't a failure being caught, it's
+correct behaviour — stepping aside from a case it genuinely cannot verify,
+on purpose, before guessing.
+
+**Monitoring is three data streams, all logged per step, serving different
+readers.** The trace (decision, arguments, observation — articles 2 and 4)
+is what a person reads to debug one run. Reasoning summaries (article 2) are
+what's left of the ReAct `Thought` now that reasoning models make it native
+and opaque by default — captured deliberately or not captured at all. Cost
+telemetry (article 6) is what a person reads to answer a different
+question, not "why did it do that" but "why did it cost that" — and
+article 5's whole empirical tool-design loop runs on the first stream
+alone, which is itself an argument for building it before the other two.
+
+**Evaluation is the one this part raises and does not resolve.** Article 1
+names the problem directly — non-determinism means checking output against
+an expected value is no longer enough — and nothing in articles 2 through 6
+answers it. This handbook already has a testing pyramid (s05-03) and a
+quality-evaluation framework (s11-06) for systems whose path is fixed; none
+of the six articles here says what a golden set looks like when the *path*
+itself is not fixed, or whether grading the final answer is sufficient when
+article 5's whole point is that the path — which tool, in what order, with
+what reformulations — is also a thing that can be well or badly chosen. Open
+going into whatever comes next.
+
+## Part 13 — orchestration frameworks
+
+| # | Article | What it argues |
+|---|---|---|
+| 1 | [From hand-rolled loop to graph: when you need a framework](articles/s13-01-loop-to-graph-when-you-need-a-framework.md) | A hand-rolled agentic loop degenerates into nested ifs and implicit state once steps gain real dependencies, conditional branches, parallelism, or backtracking — that's the signal to formalize, not fashion. The 2026 landscape has three orchestration models (graph-based/LangGraph, role-based/CrewAI, conversational/Microsoft Agent Framework) plus Google ADK and Pydantic AI. The decision is three-way, not two: a single call needs no framework, a single reasoning-and-tool loop needs no *graph*, only genuine graph shape earns one. LangGraph is four ideas — typed state, node functions, conditional edges, a checkpointer — and over 60% of production agent incidents trace to state management specifically, which is what the checkpointer is actually for. Measure the existing hand-rolled loop as the baseline before adopting anything; if reexpressing it gains nothing measurable, the loop was already the answer. |
+
+Part 13 opens on the premise Part 12 built toward without landing — a
+hand-rolled loop that has grown past what a `while` can hold cleanly — and
+answers the question `PLAYBOOK.md`'s Axis 5 already asked in general terms
+("only once the hand-rolled loop has been tried and the branching shape has
+actually been observed to need it") with a specific, three-way decision
+rule and a real number behind it. See the article's own closing notes for
+where it sharpens that existing recommendation rather than introducing a
+new one, and for a scope note: session 13 opens describing a hand-rolled
+loop as already running in `lidr/ai-engineering`, which is not yet true —
+the branch tip is still `session 11 completed`, the same gap every article
+in Part 12 already carried, now one session wider.
+
+| 2 | [LangGraph from scratch: StateGraph, nodes, edges, and state](articles/s13-02-langgraph-stategraph-nodes-edges-state.md) | Four primitives: shared typed state, nodes as pure functions returning only the fields they change, edges (direct = fixed sequence, conditional = a routing function inspecting state), and a checkpointer (covered separately). The state schema is the highest-leverage decision — reducers (`Annotated[list[X], operator.add]`) decide whether an update overwrites (the default) or accumulates (required for parallel branches not to clobber each other), and everything in state serializes on every transition, so keep it minimal. A routing function returning the next node's name is the entire mechanism for conditional control. The upfront design cost is real for a trivial flow and is exactly what buys the control back for a real one. |
+
+Article 2 is article 1's recommendation turned into code for the exact flow
+article 1 named, and deliberately modest about it: no parallel branches yet
+(the per-component search is a Python loop inside one node, not parallel
+edges) and no checkpointer, which article 1 identified as the actual
+justification for a framework in the first place — both are named as
+what's still to come. See the article's own closing notes for a precise
+distinction worth catching before assuming a framework decision already
+happened: `langgraph` is already *installed* in `lidr/ai-engineering`
+(pulled in transitively by `langchain-openai`, declared for embeddings, not
+orchestration) despite zero lines of `StateGraph` code existing anywhere —
+importable is not the same fact as adopted.
+
+| 3 | [State and persistence: reducers, checkpointers, and memory](articles/s13-03-state-persistence-reducers-checkpointers-memory.md) | Reducers decide how a node's update combines into state — overwrite by default, accumulate with `operator.add` — and resuming with accumulator fields in the initial state duplicates them, since the reducer merges rather than replaces. A checkpointer persists state after every node and can reuse the project's existing Postgres, creating its own tables alongside pgvector with no new infrastructure; `thread_id` ties an execution to its resumable history. Short-term memory (execution state, ephemeral, lives in the checkpointer) and long-term memory (estimate history, durable business data) are different problems — the checkpointer is not your product database. State size is a direct performance cost: everything serializes on every transition, and a bloated state turns the checkpoint write into the real bottleneck. |
+
+Article 3 delivers the first of the two things article 1 said a framework
+has to get right to earn its complexity tax — state management, per the
+same 60%-of-incidents figure both articles open with — while parallel
+budget search, article 1's other justification, stays flagged as not yet
+built. See the article's own closing notes for a precise correction worth
+making before assuming "reuses the project's Postgres" means "reuses the
+existing connection pool": `database.py` already runs two separate engines
+against the same `DATABASE_URL` (sync psycopg for ingestion, async asyncpg
+for the RAG store), and this article's proposed `psycopg_pool` is a third,
+sharing a driver family with the sync engine but not the async one — one
+database, three pools, not one. `PLAYBOOK.md`'s live pass-through
+cross-cutting note already argued this article's short-term/long-term
+memory split from a different direction (its own "durable exhaust" point)
+before this article existed to cite; both are updated to reference each
+other now.
+
+| 4 | [Parallel execution and conditional routing](articles/s13-04-parallel-execution-conditional-routing.md) | Budget search drags the whole flow by running one component at a time when the components don't depend on each other. LangGraph's Send API fans out one parallel branch per component and the previous article's reducer makes fan-in possible — without an accumulator field, concurrent branches clobber each other instead of concatenating. A conditional edge is a function reading state and returning the next node's name, the same mechanism dispatching the fan-out, now used to branch — reserved for real decision points only. Cycles need an explicit bound in your own logic (a retry counter, a routing function that gives up cleanly past N attempts), not just the framework's global recursion limit, which is a safety net, not a strategy. Parallelism's cost is the state merge: concurrent fields must be accumulators, and a worker's output should stay minimal, or a race condition appears where there wasn't one. |
+
+Article 4 delivers the second half of article 1's justification for a
+framework at all — parallelism, alongside article 3's state management —
+closing out the three-part case article 1 opened this session with. See
+the article's own closing notes for a figure placement worth catching (the
+same conditional-routing diagram appears twice, once misplaced right after
+the fan-out section it doesn't illustrate, leaving fan-out itself without a
+figure), a state-schema gap in the same family as s12-02/04's undefined
+`AgentResult`/`Step` (`retry_count` is read but never added to
+`EstimationState`), and a real precedent for bounded retry already in the
+codebase — `max_retries=6` on a failed Pydantic validator
+(Session 4/9) — years before LangGraph, the same shape relocated rather
+than a new pattern. `PLAYBOOK.md`'s hard-cap guidance now carries this
+article's safety-net-vs-strategy distinction directly.
+
+| 5 | [Error handling and recovery in complex flows](articles/s13-05-error-handling-and-recovery.md) | Not every failure is the same. Transient → retry with backoff (a per-node RetryPolicy, no hand-written loop). Persistently down dependency → fallback plus a circuit breaker, since retrying only prolongs the agony. Exception mid-node → resume from the last checkpoint, no work lost. Low confidence or ambiguity → `interrupt()` pauses the graph, persists state, and waits — indefinitely if needed — for a human decision via `Command(resume=...)`. The gotcha worth internalizing: on resume the node re-executes from its start, and `interrupt()` then returns the decision instead of pausing again, so the work before the pause must be cheap and idempotent. Neither automate everything nor gate every step — one human gate at the critical, low-certainty point, not ten scattered through the flow. |
+
+Article 5 closes the loop→graph arc this session opened: article 1 asked
+whether a framework earns its complexity tax, articles 2-4 built the graph
+that earns it, and this one is what keeps that graph from falling over the
+first time something breaks. See its own closing notes for the sharpest
+finding of the session so far — not a flaw in any single article, but a
+real bug that appears only when article 5's human-rejection path is
+combined with article 4's `route_after_validation` exactly as both
+articles' own continuity invites: a rejection and an automated "try again"
+both read as `status != "validated"`, so a human's explicit "no" can be
+silently routed back into another automated retry instead of to review.
+`PLAYBOOK.md`'s Axis 5 guidance now states the general lesson directly —
+give a handover its own status value, never reuse a retry loop's "not done
+yet." Also worth its own read: a RetryPolicy and an internally-caught
+timeout on the same node target different failure classes and don't
+compose the way stacking them might suggest, and the codebase already
+resolves low confidence today, just by auto-labelling it
+(`LOW_CONFIDENCE_THRESHOLD`, s05-05's Boss halving its own confidence) —
+never by asking a person, which is what this article actually adds.
+
+| 6 | [Observability: LangSmith and Logfire for the AI service](articles/s13-06-observability-langsmith-logfire.md) | Every question this arc asked — does the framework earn its place, does parallelizing pay off, what to make robust — assumed you could see the execution from the inside. The span is the unit (a named stretch with a start, end and attributes); the trace is the tree mirroring request → graph run → node → model call/DB query. LangSmith traces and evaluates agents natively, most natural inside LangChain, turned on mostly by env vars. Logfire, on OpenTelemetry, instruments the whole application — FastAPI, asyncpg, httpx — with one line each and exposes spans over SQL, so cost-per-estimate is a query. The deciding trade-off: LLM-only tools don't see the seam between a tool call and its result, which is usually where a database-backed service's real problems live — full-stack tracing does. |
+
+Article 6 closes the arc this session opened: article 1 asked whether
+formal orchestration earns its complexity tax, articles 2-5 built and
+hardened the graph that does, and this one is what lets that answer be
+checked against a trace instead of taken on faith. See its own closing
+notes for a precedent worth knowing before treating this as observability
+from zero: `app/generation/rag/observability.py`'s `log_stage` (Session 9)
+already does a structlog-based version of this article's own core
+argument — its docstring states almost the same case this article opens
+with — so adopting Logfire is an upgrade from structured logs to a real
+span/trace model, not a first instrument, and deciding whether `log_stage`
+gets replaced, kept in parallel, or bridged into it is a real design
+question of its own. Also worth catching: the span-wrapping example reuses
+`s13-04`/`s13-05`'s `search_one_budget` node but shows it without the
+retry policy or timeout handling those articles gave it — illustrating span
+placement in isolation, not a body to copy verbatim. `PLAYBOOK.md`'s
+`structlog` default now cites this article for when graduating beyond it
+is actually warranted.
+
+Closing the six: unlike Part 12's set, which orbited one question from six
+directions, Part 13 is a single build, told in order — one running example
+(loop → graph → persistence → parallelism → resilience → observability)
+that answers article 1's own "measure before deciding" test by the time
+article 6 closes it. That structure creates its own, distinct hazard, and
+it showed up three times: **code from adjacent articles, each correct on
+its own, doesn't automatically compose.** Article 5's human-rejection path
+collides with article 4's retry-count routing — a real bug, not a
+labelling slip, caught only by reading them together. Article 5's own
+retry policy and its internally-caught timeout, on the same node, target
+different failure classes without saying so. Article 6's span-wrapping
+example silently drops the error handling article 5 gave that exact node.
+None of the six articles is wrong in isolation; the risk this arc's own
+shape creates is trusting that matching function and field names across
+sessions means matching behaviour.
+
+The "checked against the code" thread reads differently here than in Part
+12, too. There, every article found the same thing: the reference
+implementation was behind the article, cleanly. Here it's messier and more
+interesting — article 2 found LangGraph already *installed*, unused, riding
+in on an unrelated dependency; article 3 found the project already running
+two Postgres connection pools before a third gets proposed; article 5
+found automated confidence-handling that already exists but never asks a
+human; article 6 found a working, structlog-based span system (Session 9's
+`log_stage`) that already does a smaller version of what full tracing would
+add. The pattern worth carrying forward: before treating any of this
+session's proposals as new infrastructure, audit for what's already
+there, installed or half-built, rather than assuming green field.
+
+Two threads this part opens and does not close. First, it never reconciles
+with Part 12's own cost-measurement article: `s12-06`'s `CostLedger`
+(a hand-rolled dataclass, manual `.add()` calls per turn) and `s13-06`'s
+Logfire-over-SQL cost-per-estimate query are two different mechanisms for
+the same problem, proposed a session apart, with no article on either side
+saying whether the graph era replaces the loop era's ledger, keeps it, or
+folds it into a span attribute. Second, Part 12's own open thread —
+`s12-01`'s claim that non-determinism breaks expected-value testing, never
+answered by any article since — is still open. This part gives that future
+answer its prerequisite (a trace is what a path-aware golden set would need
+to grade against) without supplying the answer itself.
+
 ## Conventions
 
 **Documents are stored in English.** Several arrive as Spanish originals and are
