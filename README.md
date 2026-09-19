@@ -622,6 +622,167 @@ answered by any article since — is still open. This part gives that future
 answer its prerequisite (a trace is what a path-aware golden set would need
 to grade against) without supplying the answer itself.
 
+## Part 14 — multi-agent systems
+
+| # | Article | What it argues |
+|---|---|---|
+| 1 | [When a multi-agent system stops being "a graph with more nodes"](articles/s14-01-when-multi-agent-stops-being-a-graph-with-more-nodes.md) | From outside, multi-agent looks like a graph with more nodes and fancier names — if the only change is renaming a function, that's architecture theater, paid for in latency and 3am debugging. The linear graph's real ceiling has four recognizable symptoms: a node's prompt accumulating rules from unrelated domains, a tool set too large for one decision space, step order genuinely unknowable ahead of time, and responsibilities evolving at different rates. What separates a workflow from an agentic system isn't node count — it's who owns control flow, code or the model. Once justified, specialists cooperate (each contributes a distinct piece, one pass, one weak link contaminates everything downstream) or compete (two+ attack the same task with different criteria, a synthesizer resolves the divergence — itself a signal about uncertainty — at double or triple the cost, and only worth it when the criteria genuinely diverge). |
+
+Article 1 opens session 14 by naming the four questions it says are "the
+rest of the road" — routing, agent-to-agent communication, human
+intervention, and tool privilege — without answering any of them yet;
+expect subsequent articles to take these one at a time. See the article's
+own closing notes for where "compete" is mechanically related to but not
+an instance of `s13-04`'s fan-out (fanning out *strategies* over one input
+rather than one operation over independent inputs, with a synthesis call
+as the fan-in instead of a reducer), and for a near-miss in the reference
+codebase worth not over-reading: "conservative" and "aggressive" already
+appear in existing prompts, but only as single-word tuning adjectives, not
+this article's two-agents-and-a-synthesizer pattern. `PLAYBOOK.md`'s Axis 5
+gets its most substantial update since `s12-01` itself — concrete symptoms
+for triggers 1-2, and a new cooperate-vs-compete decision point for when
+the axis is selected.
+
+| 2 | [The supervisor: building routing by hand with StateGraph and Command](articles/s14-02-the-supervisor-stategraph-command.md) | A supervisor decomposes, delegates, and consolidates — zero domain work; the moment it holds a business tool it's just another overloaded agent wearing a router's name. Build it by hand, since routing is precisely the part not worth delegating to a layer you don't control. What it sees matters most: a deliberately built digest, a five-line compact projection of state, constant cost per decision regardless of transcript length — never the full message history. Routing is a closed, validated `Literal` plus a one-sentence `reason` field nobody reads except you, at 3am, in the trace; `Command` updates state and redirects control in one return value, typed against the same `Literal` LangGraph uses to infer the graph's edges. The contrarian, usually-right default: most routing decisions are deterministic preconditions, not judgment calls — resolve those in code, call the model only for genuine ambiguity, and if that split turns up no real ambiguity at all, that's the discovery you never needed a model-driven supervisor. |
+
+Article 2 answers the first of article 1's four open questions — routing —
+leaving communication, human intervention, and privilege for what the
+article's own closing section calls "the next conversation." See its own
+closing notes for two precedents worth knowing before treating any of this
+as new territory: Session 10's retrieval router already logs a `reason`
+field with nearly the same justification this article gives
+`SupervisorDecision.reason`, and Session 5's conversation-compression
+module already solves "don't hand the model the full history" for chat
+memory, by a different technique, two sessions before this article needed
+to argue for the same principle applied to routing state. Also worth
+catching: `_bump()`, load-bearing in the hybrid supervisor's every
+deterministic branch, is used but never defined — and, unusually for this
+series, the source text ends with no Sources section at all, left absent
+here rather than invented. `PLAYBOOK.md`'s Axis 5 supervisor-loop guidance
+now answers what the router actually sees and how much of routing is
+really a model call, questions it previously left open.
+
+| 3 | [Agent communication patterns: shared state, handoff, and messages](articles/s14-03-agent-communication-patterns.md) | A typed shared state every agent reads and writes is already a named, 1970s-AI pattern (blackboard), chosen without naming it. Three rungs, not equally-ranked alternatives. Shared state is the default — agents couple only to the state schema, cheapest to trace, its one real question is per-field reducer policy (a field that should accumulate but overwrites is silent data loss, not a crash). Direct handoff removes the round trip through a central router — a two-specialist task drops from four model calls to two — paid for in topological coupling (every agent must know its possible neighbors) and scattered trace reconstruction; earned only by a measured routing-cost bottleneck, never chosen for elegance. Messages break the same-process assumption entirely, trading maximum decoupling for eventual consistency and real operational infrastructure; justified only once agents become genuinely separate services. The three compose. None of them answers what happens when the system shouldn't decide alone — that's persisted state and an outward contract, not a communication pattern. |
+
+Article 3 answers the second of article 1's four open questions —
+communication — leaving human intervention and tool privilege for what
+this article's own closing section names directly as still unsolved. See
+its own closing notes for the sharpest catch: `graph=Command.PARENT` only
+means something when each agent is itself a compiled subgraph, a topology
+none of `s13-02`–`05` or `s14-02` actually builds — bolting a handoff tool
+onto `s14-02`'s existing flat function-nodes wouldn't produce this
+article's behavior, since there's no parent graph to escape to. Also
+worth reconciling before it becomes two competing conventions: this
+article's `correlation_id` and Session 9's `request_id`
+(`log_stage`) name the same idea. `PLAYBOOK.md`'s Axis 5 guidance now
+carries the full three-rung escalation ladder as a decision separate from
+routing.
+
+| 4 | [Human-in-the-loop: interrupt, pause, and resume over the checkpointer](articles/s14-04-human-in-the-loop-interrupt-pause-resume.md) | When the system knows it isn't in a position to answer alone, it has to stop, show a person what it has, and wait — for minutes or days, possibly in another process. That isn't a pause, it's persistence, and the checkpointer already built for crash recovery is the complete mechanism unmodified: `interrupt()` writes state and returns control; `Command(resume=...)` continues later through the same `ainvoke`. Three legitimate triggers, all boolean-evaluable over state, never a vibe: low scored confidence, an estimate outside the historical band, no precedent. Three anti-patterns dressed as caution: routing agent failures to a human, reviewing "just in case" until the reviewer rubber-stamps everything, and enforcing a hard business rule through the AI gate. The pause crosses three layers, not one — a new value on an already-existing status field, a `/resume` endpoint, `authorize!` staying in the business backend, which owns users. The gotcha worth designing around: a resumed node re-executes from its start, so the interrupting node does nothing but interrupt. The human decision paired with the system's proposal is the most valuable data the system produces — persist it from day one. |
+
+Article 4 answers the third of article 1's four open questions — human
+intervention — leaving only tool privilege. See its own closing notes for
+the sharpest catches: this article tightens `s13-05`'s "keep prior work
+idempotent" into a stricter, easier-to-audit rule (no side effects at all
+before `interrupt()`); the gate's place in `s14-02`'s supervisor graph is
+left ambiguous, and that article's own logic points at the answer (a fixed
+edge, not a model-routed destination, since the trigger check is itself
+deterministic); and — a first for this series — the Rails side of the
+reference codebase already has a real `EstimationsController`, but it's
+the Session 4 CAG-era one, structurally backwards from what this article
+needs (it doesn't know an estimate's id until *after* the AI call
+returns, where this pattern needs it *before*). `PLAYBOOK.md`'s handover
+guidance now states concrete triggers and anti-triggers instead of only
+the field's shape, and the evals checklist gets a new item connecting
+this article's saved human-decision pairs directly to Part 12's
+still-open evaluation question.
+
+| 5 | [Competition and synthesis between agents](articles/s14-05-agent-competition-and-synthesis.md) | A single estimator returns a number with no measure of its own fragility, and asking the model to self-score confidence inherits its bias toward trusting what it just said. Two agents with deliberately opposed criteria — conservative assumes friction, aggressive assumes the best case — run in parallel via plain multi-edge fan-out and fan in through the same reducer already established. Divergence between proposals is computed arithmetic, never an LLM call, and it *is* the signal: convergence means the outcome doesn't depend on the assumptions, the system closes on its own; divergence means a person has to resolve which assumption holds. The synthesizer's job is explicitly not to average — driving assumptions and open questions are the valuable output, a false-precision midpoint destroys them. Competition is fraud when competitors aren't genuinely different (same model, one-adjective prompts correlate far more than expected) or when there's nothing to disagree about (if you couldn't defend both positions yourself, neither can your agents). Stay at two competitors; a third usually lands in the middle. Repeated sampling of one prompt is cheaper but measures the model's own noise, not the domain's actual uncertainty. |
+
+Article 5 is `s14-01`'s "compete" topology, sketched there, fully built
+here — and answers, at the code level, what `PLAYBOOK.md` had only been
+able to guess at since `s14-01`: no `Send` API needed (the competitor
+count is fixed, known at graph-definition time, unlike `s13-04`'s
+data-dependent case), and divergence is deterministic arithmetic feeding
+the synthesis call, not something the model itself judges. See the
+article's own closing notes for the sharpest catch in this session: a
+confirmed, precise arithmetic mismatch between the code shown and *both*
+figures — `compute_divergence` as written and the prose's own worked
+examples agree with each other (0.44, 0.07), but both figures show
+different numbers (0.79, 0.08) that turn out to match a different
+formula entirely (normalized against the low value instead of the high
+one), confirmed by direct computation, not a rounding quibble. Also
+worth knowing: this is a second, more detailed pass at the exact
+near-miss `s14-01` already flagged in the reference codebase's existing
+"conservative"/"aggressive" prompt adjectives — still just words, still
+not this article's two-agents-and-a-synthesizer pattern.
+`PLAYBOOK.md`'s cooperate-vs-compete guidance is corrected and
+completed to match.
+
+| 6 | [Least privilege, action validation, and audit for agents](articles/s14-06-least-privilege-action-validation-audit.md) | Every agent so far only reads; the cost of a hallucination is a wrong number. The day one writes, the cost becomes a deleted row, a misdirected email, corrupted production state — and containment can't live in the prompt, which is an instruction the model weighs, not a restriction; the model is an untrusted client proposing actions, the same "don't trust the client" discipline already applied everywhere else. Three layers outside the prompt: least privilege in the tool grant itself, verified at startup so a miswired grant fails deployment, not production, with writes concentrated into one small, auditable agent rather than scattered; a deterministic guard between intent and execution checking both privilege and argument sanity (a run-scoped id mismatch is the check that matters most and is most often skipped), with irreversible actions routed to the human gate already built rather than auto-approved; and an audit log of every attempted action, allowed or denied — denials are the most valuable line in it, an early warning well before anything breaks. A deliberately drawn boundary closes it: this is all application-level, answering what an agent can do within the logic; process isolation, network policy, resource limits, and secrets belong to infrastructure and the next session. |
+
+Article 6 explicitly closes the module — its own text says so — completing
+the last of `s14-01`'s four open questions (tool privilege) and handing
+off to deployment and operations. That hand-off isn't new to this
+article: this handbook's own README Provenance section already named
+"S15... several articles defer production concerns... to it," written
+long before any article in Part 12-14 existed — the two agree
+independently. See the article's own closing notes for two more instances
+of this session's running pattern — a sixth node (`persistence_agent`)
+added without updating `s14-02`'s shared `AgentName` type, and a
+verification function (`verify_tool_grants`) that presumes an `Agent`
+wrapper with an introspectable `.tools` list, a shape nothing built across
+`s13-02` through `s14-05` actually has, since every node in this whole arc
+is a plain function calling one fixed capability directly — and for a
+precedent already sitting in the right place: `app/foundation/guardrails/`
+already holds input and output policies this handbook has cited since
+Part 5, making this article's action-validation guard a natural third
+policy in an existing module, not new territory. `PLAYBOOK.md`'s
+Guardrails row gains a full actions category, and Section 0 now states
+precisely where this playbook's local-v1 scope ends and infrastructure
+concerns begin for agentic systems specifically.
+
+Closing the six: Part 14 is one worked system built incrementally, the
+same shape as Part 13, and it inherited that arc's hazard rather than
+outgrowing it. Every article but the first extended the same shared
+five-then-six-node graph, and in five of the remaining five, extending it
+broke something an earlier article had already fixed in place: `s14-02`'s
+`_bump()` used but never defined; `s14-03`'s `Command.PARENT` presuming a
+subgraph topology nothing in this arc builds; `s14-04`'s human-review gate
+left unclear whether it's a supervisor destination or a fixed edge, with
+`s14-02`'s own logic answering it; `s14-05`'s divergence figures matching
+a different formula than the function actually shown, confirmed by direct
+computation — the sharpest single catch across both sessions; `s14-06`'s
+sixth node and its `verify_tool_grants` presuming an `Agent.tools` shape
+nothing built so far has. Six articles, five composition problems. This
+isn't a knock on any one of them — each is internally sound — it's what
+"one running example, told in installments" costs structurally, worse
+here than in Part 13, and worth naming as a standing risk rather than a
+one-off.
+
+Underneath the six is a single thesis, never stated once but demonstrated
+independently five times: **push every decision into deterministic code
+that can be pushed there, and spend a model call only on the judgment that
+genuinely can't be**. `s14-01` states it abstractly (who owns control
+flow). `s14-02` applies it to routing (preconditions in code, the model
+only for real ambiguity). `s14-04` applies it to when to stop (a
+boolean-evaluable trigger, never a vibe). `s14-05` applies it to
+competition (divergence is arithmetic; only the synthesis is a model
+call). `s14-06` applies it to safety (a plain-code guard, explicitly never
+an LLM validating another LLM). Read as six separate techniques, this part
+is a lot to hold at once; read as one rule applied to five different
+questions, it's a single idea.
+
+What's left open going forward is now unusually well-grounded rather than
+guessed at. This part hands off to deployment and operations —
+`s14-06`'s own closing words say so, and this handbook's README already
+carried that exact hand-off, written before any article in Part 12-14
+existed (*"S15... defers production concerns... to it"*). Part 12's still-
+open evaluation question is also less abstract now than when it was
+raised: `s14-04`'s saved human-decision pairs are a concrete, growing
+source of exactly the path-aware, human-graded material that question
+would need, still without an article answering how to use it.
+
 ## Conventions
 
 **Documents are stored in English.** Several arrive as Spanish originals and are

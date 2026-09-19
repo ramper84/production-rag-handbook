@@ -80,7 +80,15 @@ When the user hands over context material for a new project:
    Postgres(+pgvector), Redis, the API, and a thin frontend, with no external
    dependency except the LLM provider's API key. Production concerns
    (auth hardening beyond API keys, autoscaling, managed Postgres, CI/CD) are
-   named as follow-ups, not built into v1.
+   named as follow-ups, not built into v1. `s14-06` draws this boundary
+   precisely for agentic systems specifically: least privilege, action
+   validation, and audit (Section 4's Guardrails row) are application-level
+   and belong in v1 the moment any agent holds a tool with side effects;
+   process isolation, network egress policy, resource limits, and secrets
+   rotation are infrastructure-level and stay a named follow-up like
+   everything else in this item — the two layers complement each other and
+   neither substitutes for the other, so v1 shipping only the first is a
+   scope decision to state, not an oversight to hide.
 
 ---
 
@@ -347,6 +355,28 @@ least one** of these is true, and say in the plan which one:
    covered by Axis 3 — this axis is for when the things being routed to are
    themselves agents with their own tool access, not retrieval collections.
 
+`s14-01` gives triggers 1-2 four concrete, recognizable symptoms — check
+against these before invoking the axis on a hunch:
+
+- **A single node's prompt is accumulating rules from unrelated domains**
+  (how to calculate, *and* how to interpret edge-case references, *and*
+  how to adjust for context that has nothing to do with the calculation).
+  The tell: fixing one rule breaks an unrelated case — coupling, the same
+  kind you'd recognize in an oversized class.
+- **One node's tool set has grown past what one decision space handles
+  well** — tool-choice accuracy degrades as the option count climbs in a
+  single call, the same way a person's would with too many unlabeled
+  buttons. Splitting tools across narrower agents is an accuracy fix, not
+  only a safety one.
+- **The step order is genuinely not knowable ahead of time** — this is
+  trigger 1 restated as something you can actually observe: hand-coding
+  every branch as a conditional edge is possible, but produces a
+  decision tree that ages badly as new input shapes show up.
+- **Responsibilities evolve on different cadences** — an organizational
+  signal, not a technical one: if two teams touch the same node at
+  different rates for unrelated reasons, that's a reason to split it that
+  has nothing to do with model behavior.
+
 **What this costs, and why the bar is high.** An orchestration loop
 compounds every cost this playbook otherwise fights to bound: `s05-03`'s
 pyramidal-test discipline gets harder to hold when the step sequence itself
@@ -378,21 +408,109 @@ rather than a raised error on classifier failure — is usually cheaper than
 committing every request to the agent, and the estimator's own retrieval
 router (s10-05) is a working precedent for exactly that cascade shape, just
 routing to collections instead of to pipeline-vs-agent.
+
+`s14-01` adds a second decision, independent of the supervisor mechanics
+below and just as easy to skip: **do the specialists cooperate or
+compete?** State which, explicitly, in the plan.
+- **Cooperate** (each specialist contributes a distinct piece — extraction,
+  retrieval, generation, validation) is the default. One pass through the
+  registry, cost stays additive, and it's the right shape whenever the
+  contributions are orthogonal rather than redundant.
+- **Compete** (two or more specialists attack the *same* sub-problem with
+  genuinely different criteria — different prompt, different evidence,
+  ideally a different model — and a synthesizer reconciles them) costs
+  2-3x for a reason worth having: the *divergence* between competing
+  outputs is signal about the case's uncertainty that a single-path answer
+  never surfaces. Only reach for it when the criteria actually diverge —
+  two near-identical prompts differing by one adjective correlate far more
+  than expected and buy a false second opinion at real cost. Never apply
+  it by default across every request; that multiplies the bill without
+  multiplying quality.
+- Mechanically, `s14-05` corrects and completes what this playbook first
+  guessed about "compete" from `s14-01` alone: it does **not** need
+  `s13-04`'s `Send` API. `Send` earns its keep for *data-dependent* fan-out
+  width (one branch per component, unknown until the input is read); a
+  fixed, small set of competing strategies — the normal case — is known at
+  graph-definition time, so plain static edges out of one source node are
+  simpler and sufficient. What *does* carry over from cooperation's
+  reducer discipline: the competing proposals still fan in via
+  `operator.add` on an accumulator field, exactly as before. What's new:
+  **compute the divergence between proposals as deterministic code, never
+  a model judgment call** — it's arithmetic over the proposed numbers, and
+  it's the actual signal (proposals that converge mean the outcome doesn't
+  depend on the disputed assumptions and the system can close on its own;
+  proposals that diverge mean a person needs to resolve which assumption
+  holds, feeding directly into Axis 5's handover field above). Only the
+  synthesis step itself — reconciling *why* they diverge, not *whether* or
+  *by how much* — is a model call, and it should be explicitly instructed
+  not to average: a midpoint is false precision that also destroys the
+  paired assumptions and open questions competition was paid for in the
+  first place.
 - A **hand-rolled supervisor loop**: a router function, a small fixed
   registry of specialist functions/agents, a **hard iteration/step cap**, and
   a per-step recorder logging which specialist ran, what it produced, and
   what it cost — the same shape as fantasy's `pipeline/RunRecorder`, just
   with the router's target chosen at runtime instead of fixed. This is
   usually sufficient and stays inside the pytest-testable, deterministic-
-  where-possible discipline the rest of this playbook holds to. Two fields
+  where-possible discipline the rest of this playbook holds to. `s14-02`
+  answers two questions this bullet otherwise leaves open. **What the
+  router sees**: build it a deliberate digest — a compact, bounded
+  projection of state (a handful of counts/booleans/flags), never the full
+  execution history — so routing cost stays constant per decision instead
+  of growing with transcript length or iteration count, the same
+  context-growth trap Axis 5's cost guidance already warns about, applied
+  specifically to the router's own input. **How much of routing is
+  actually a model call**: usually less than it looks like. Most routing
+  decisions are deterministic preconditions ("X must happen before Y"), not
+  judgment calls — resolve those in code and call the model only for
+  genuine ambiguity. If writing that split turns up no genuine ambiguity at
+  all, that's the finding that you never needed a model-driven router to
+  begin with — the fixed pipeline (or the plain hand-rolled loop above)
+  already was the answer.
+
+  **How specialists communicate is a separate decision from routing, with
+  its own three-rung ladder (`s14-03`) — don't skip it by inheriting
+  whatever a framework does by default.** Shared state (the recorder's
+  own state object, specialists reading/writing it directly) is the
+  default and is already what this bullet describes — couples every
+  specialist only to the state schema, never to each other, and is the
+  cheapest to trace. Escalate to a direct handoff (an agent decides who
+  acts next and passes control itself, skipping the router round-trip)
+  only once routing overhead is a *measured* cost or latency problem, not
+  an imagined one — it trades real savings for every specialist needing to
+  know its possible neighbors, which doesn't degrade gracefully as the
+  registry grows. Escalate further to message/event-based communication
+  only once specialists stop being functions of one service and become
+  separate services with independent deployment lifecycles — that's a
+  distributed-systems decision, not a routing optimization, and brings
+  eventual consistency and real operational infrastructure with it. The
+  three compose (shared state internally, one published event when a run
+  completes, for instance) — the question is never which pattern is best
+  overall, only which one belongs at a given boundary. Two fields
   `s12-02` adds to that recorder, both easy to skip and expensive to have
   skipped later: a **handover field** (a `needs_human`/`needs_review`-shaped
   status distinct from Axis 4's deterministic Critic — this one is the
   agent's own judgment call that a case is outside what it can verify, not a
   rule check — `s13-05`'s `interrupt()`/`Command(resume=...)` is a concrete
-  implementation of it, gated behind a checkpointer, with a real gotcha: the
-  paused node re-executes from its start on resume, so whatever runs before
-  the pause must be cheap and idempotent), and, if the underlying model does
+  implementation of it, gated behind a checkpointer, with a real gotcha —
+  `s14-04` tightens it further: the paused node should do **nothing but**
+  check the trigger condition and call `interrupt()`, full stop, not merely
+  "keep prior work cheap and idempotent" — move any real work to an earlier
+  node, because a resumed node re-executes from its start and re-runs
+  everything before the call. **What should set the field, per `s14-04`'s
+  three legitimate triggers, all boolean-evaluable over state, never a
+  vibe**: confidence the system scored below a stated threshold, an output
+  outside a known-good range (often pure arithmetic, no model needed), or a
+  case with no precedent to ground it. **What should not**: an upstream
+  agent failing (that's an error — retry/fallback, Axis 5's own guidance
+  above — not a review), a threshold set high "until we trust it more" (a
+  60%-of-cases trigger rate means the reviewer rubber-stamps everything and
+  the signal is gone by the time a case that matters arrives), or a hard
+  business rule with no judgment in it (that belongs in the business layer
+  downstream of this service, not the AI service's own gate). The human
+  decision this produces, paired with what the system proposed, is worth
+  persisting from day one regardless of what evals story exists yet — see
+  Section 9), and, separately, if the underlying model does
   its reasoning natively rather than in visible text, deliberately captured
   **reasoning summaries** — that trace is opaque by default in reasoning
   models, not something the
@@ -510,7 +628,7 @@ Deviate with a stated reason in the plan, not silently.
 | Prompts | Jinja2 templates, versioned by directory (`prompts/<name>/v1/`, `v2/`, …) | A prompt change is a new version, not a silent edit — both reference projects treat this as load-bearing |
 | Structured output | Instructor (Pydantic-validated LLM output, with re-prompt on validation failure) | Avoids hand-rolled JSON parsing and repair hacks |
 | Logging | `structlog` | JSON in prod, console in dev; every pipeline stage logs its own name. `s13-06`: graduate to real spans/traces (Logfire, on OpenTelemetry — one line each to instrument FastAPI/asyncpg/httpx) only once a measured need shows up, same "don't adopt speculatively" discipline as everywhere else in this table — the concrete trigger is a database-backed service where the problem keeps turning out to be the seam between a call and its result (a slow query, a stalled connection) that structured logs alone don't localize as well as a trace does |
-| Guardrails | Input: size limits, prompt-injection scan, relevance/topicality check. Output: scope/format filter, PII/disliked-content filter. Spend: a hard cost ceiling that **fails closed** | Caches and memory degrade silently (fail open) on an outage; anything that bounds spend must fail closed (fantasy ADR-008) |
+| Guardrails | Input: size limits, prompt-injection scan, relevance/topicality check. Output: scope/format filter, PII/disliked-content filter. Spend: a hard cost ceiling that **fails closed**. Actions (only once any agent holds a tool with side effects — Axis 4/5): a least-privilege grant table (agent → exactly the tools it needs, verified at startup so a miswired grant fails deployment, not production), a deterministic `guard_action`-style check between intent and execution (plain code, never an LLM validating another LLM — argument sanity plus a run-scoped id check, e.g. the operation's own identifier matching the current run, not just "is this tool allowed at all"), and an audit log of every attempted action, **allowed or denied** — denials are the most valuable line in that log, an early warning before anything breaks | Caches and memory degrade silently (fail open) on an outage; anything that bounds spend must fail closed (fantasy ADR-008). `s14-06`: concentrate write/external tools into as few agents as possible (a small `persistence_agent`, not writes scattered across every specialist) so the system's dangerous surface fits in one reviewable file; route irreversible actions to the same human gate Axis 5's handover field already built, rather than auto-approving them; redact audit-log arguments, don't let them become a second, unpseudonymized copy of whatever PII guardrail already exists |
 | Testing | pytest, pyramidal (s05-03): mostly structural/deterministic assertions, some statistical, a thin layer of LLM-as-judge | A suite that is all judge-based is slow and brittle on one point of failure |
 | Frontend (v1) | **Streamlit** | Python-native, no separate build step, fast enough to stand up in the same repo and container set as the API — the right choice whenever the goal is "locally deployable for manual testing," not a production customer UI. See Section 4a |
 | Frontend (post-v1, if productionizing) | A dedicated web app (Rails, Next.js, etc.) calling the API over HTTP, in its own service/repo | Only once the API contract has stabilized under manual testing — mirroring the estimator's later `estimator-web` split |
@@ -903,6 +1021,13 @@ project:
       trace (s12-02/s12-04) for manual review even when the graded answer
       passes, and treat "correct answer, obviously wrong path" as a finding
       to write down, not a pass.
+- [ ] If a human-in-the-loop gate exists (Axis 5's handover field), every
+      pair of *what the system proposed* and *what the human decided* is
+      persisted from the first real run, whether or not an eval harness
+      exists yet to use it (`s14-04`). This is the concrete material a
+      future path-aware golden set — the still-open question in the item
+      above — would need to grade against; it's free to capture now and
+      unrecoverable if skipped.
 - [ ] If a live pass-through source exists, a read older than the stated
       freshness budget is caught by a test (flagged or rejected), not served
       as if it were current — the budget is enforced in code, not just
